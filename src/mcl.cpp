@@ -26,7 +26,8 @@ TO DO:
 int particle_Num = 300; //Inital Particals
 const int max_Particles = 500; //True maximum number of particals, used when likelihood is low
 std::vector<particle_data> particles; //Where particles live
-std::vector<particle_data> m_particles;
+const double resample_Percent = 0.25;
+double start_Weight = 2.0;
 
 //Chance we are in a position, used for the adaptive part of AMCL
 double likelihood = 75.0; //How likely we are where we think we are, 0 = No chance, 100 = Certain
@@ -104,26 +105,30 @@ void predict_Movement(){
 
 //Generate particals, using weight (Step 3):
 void generate_Particles(){
-    int spawned = 0;
-    int current_Mparticle = 0; //What particle we are spawning near from last run
-    int mother_Particles = std::max(particle_Num * 0.1, (double)50);
+    int mother_Particles = std::max(particle_Num * resample_Percent, (double)50); //How many particles we convert to particles
     int particles_PMP = std::floor(particle_Num / mother_Particles); //How many particles per one mother particle
     int leftover_P = particle_Num % mother_Particles;
     double x_range = 2.0; //How far off from mother particle new particles can spawn in X
     double y_range = 1.5; //How far off from mother particle new particles can spawn in Y
     double heading_range = 5.0; //Heading range from mother partical
-    particles.clear(); //Delete old particles to be able to generate new ones
-    
+    // particles.clear(); //Delete old particles to be able to generate new ones    
+    std::vector<particle_data> new_particles; //Temporary holder for the particles
+
     for (int i = 0; i < mother_Particles; i++){
-        // double mp_x = m_particles.at(); //Get x of curent mother particle
-        // double mp_y = m_particles.at(); //Get y of current mother particle
-        // double mp_h = m_particles.at(); //Get heading of current mother particle
+        double mp_x = particles[i].x; //Get x of curent mother particle
+        double mp_y = particles[i].y; //Get y of current mother particle
+        double mp_h = particles[i].h; //Get heading of current mother particle
+        double mp_w = particles[i].weight; //Get the weight of current mother particle
         for (int j = 0; j < particles_PMP; j++){
-            particles.emplace_back();
+            double rX = 0;
+            double rY = 0;
+            double rH = 0;
+            new_particles.emplace_back(rH, rY, rH, start_Weight);
         }
     }
+    particles = new_particles; //Move new particles into standard particle area
 
-    //Calculate how many mother particles = 10% of partical num, with a mimimum at 50 mother particles
+    //Calculate how many mother particles = 10%(?) of partical num, with a mimimum at 50 mother particles
     //How many particles per mother particle = particle num / mother particles, WITH LEFTOVERS
     //Assign left over particles to groups, starting with one
 }
@@ -159,5 +164,5 @@ void calc_Pose(){
 
 //Re-Calculate Likelihood, using weight (Step 7):
 void calc_Likelihood(){
-    
+     
 }
