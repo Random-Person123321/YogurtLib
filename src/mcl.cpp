@@ -28,6 +28,12 @@ const int max_Particles = 500; //True maximum number of particals, used when lik
 std::vector<particle_data> particles; //Where particles live
 const double resample_Percent = 0.25;
 double start_Weight = 2.0;
+const int even_DistParticles = 100; //How many particles are spawned during even distribution
+const int cover_Rate = 10; //How runs inbetween even distribution
+int cover_Cnt = 0;
+
+const int redistribute_Rate = 3; //How many runs per respawn particles
+int particle_Runs = 0; 
 
 //Chance we are in a position, used for the adaptive part of AMCL
 double likelihood = 75.0; //How likely we are where we think we are, 0 = No chance, 100 = Certain
@@ -92,38 +98,28 @@ void update_Particle_Num(){
     particle_Num = error / min_Likelihood * max_Particles; //Calculate new partical number
     particle_Num = floor(clampd(particle_Num, 100.0, max_Particles)); //Clamp particals between 100 - max
 
+    
+
     //Math, just for referance
     //Confidence 50-100
     //Particles 500-100
     //(maxConficence - currentConfidence) / 50 * 500
 }
 
-//Predict movement on particles (Step 2):
-void predict_Movement(){
-
-}
-
-//Generate particals, using weight (Step 3):
+//Generate particals, using weight (Step 2):
 void generate_Particles(){
     int mother_Particles = std::max(particle_Num * resample_Percent, (double)50); //How many particles we convert to particles
     int particles_PMP = std::floor(particle_Num / mother_Particles); //How many particles per one mother particle
     int leftover_P = particle_Num % mother_Particles;
-    double x_range = 2.0; //How far off from mother particle new particles can spawn in X
-    double y_range = 1.5; //How far off from mother particle new particles can spawn in Y
-    double heading_range = 5.0; //Heading range from mother partical
     // particles.clear(); //Delete old particles to be able to generate new ones    
     std::vector<particle_data> new_particles; //Temporary holder for the particles
 
     for (int i = 0; i < mother_Particles; i++){
-        double mp_x = particles[i].x; //Get x of curent mother particle
-        double mp_y = particles[i].y; //Get y of current mother particle
-        double mp_h = particles[i].h; //Get heading of current mother particle
-        double mp_w = particles[i].weight; //Get the weight of current mother particle
+        double mp_X = particles[i].x; //Get x of curent mother particle
+        double mp_Y = particles[i].y; //Get y of current mother particle
+        double mp_H = particles[i].h; //Get heading of current mother particle
         for (int j = 0; j < particles_PMP; j++){
-            double rX = 0;
-            double rY = 0;
-            double rH = 0;
-            new_particles.emplace_back(rH, rY, rH, start_Weight);
+            new_particles.emplace_back(mp_X, mp_Y, mp_H, start_Weight);
         }
     }
     particles = new_particles; //Move new particles into standard particle area
@@ -131,6 +127,11 @@ void generate_Particles(){
     //Calculate how many mother particles = 10%(?) of partical num, with a mimimum at 50 mother particles
     //How many particles per mother particle = particle num / mother particles, WITH LEFTOVERS
     //Assign left over particles to groups, starting with one
+}
+
+//Predict movement on particles (Step 3):
+void predict_Movement(){
+  //Eric Y needs to finish triple imu fusion - and I need delta???  
 }
 
 //Update sensor data (Step 4):
