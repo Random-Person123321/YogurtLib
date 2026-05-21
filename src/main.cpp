@@ -125,6 +125,14 @@ void autonomous() {
     //SAWP(); 
     // test();
     // tuneOffset();
+
+    /*
+    # Go into your season repo
+    cd ../2025-2026PushBack
+
+    # Add YogurtLib as a subtree inside a "libraries" folder
+    git subtree add --prefix libraries/YogurtLib https://github.com/YourUsername/YogurtLib.git main --squash
+    */
 }
 
 /**

@@ -92,7 +92,7 @@ double mcl_Theta = pose.heading;
 //// Steps for MCL ////
 //////////////////////
 
-//Update amount of particals to generate (Step 1):
+//Update amount of particles to generate (Step 1):
 void update_Particle_Num(){
     double error = 100.0 - likelihood; //Invert the likelihood to make scaling easier
     particle_Num = error / min_Likelihood * max_Particles; //Calculate new partical number
