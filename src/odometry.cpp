@@ -159,7 +159,7 @@ void updateOdometry(void* param) {
 
   resetOdometry(pose.x, pose.y, pose.heading);
 
-  const int stepMs = 10;
+  const int stepMs = 10; //30 ms?
   const double dt = stepMs / 1000.0;
 
   while (true) {
@@ -184,8 +184,24 @@ void updateOdometry(void* param) {
     double cosT = std::cos(mid);
     double sinT = std::sin(mid);
 
-    pose.x += forward * cosT - left * sinT;
-    pose.y += forward * sinT + left * cosT;
+
+    //MCL Particle updates:
+    for(int i = 0; i < particle_Num; i++){
+      double particlex = particles[i].x;
+      double particley = particles[i].y;
+      double particleh = particles[i].h;
+      particlex += forward * cosT - left * sinT;
+      particley += forward * sinT + left * cosT;
+      //Need to add noise + heading
+      
+
+      //Update particle with movement
+      particles[i].x = particlex;
+      particles[i].y = particley;
+      particles[i].h = particleh;
+    }
+
+
     pose.heading = headDeg;
 
     g_lastVertTicks = vNow;

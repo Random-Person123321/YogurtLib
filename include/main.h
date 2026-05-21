@@ -149,6 +149,8 @@ extern bool Parked;
 extern int startTime;
 extern int timeUsed;
 extern bool UseTime;
+extern int particle_Num;
+
 // ---- PID (dt aware, competition-grade) ----
 struct PID {
   double kP;
@@ -197,6 +199,11 @@ struct PID {
   }
 };
 
+struct particle_data {
+    double x, y, h, weight;
+};
+
+extern std::vector<particle_data> particles;
 
 /**
  * You should add more #includes here

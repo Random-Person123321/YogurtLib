@@ -18,8 +18,5 @@ void calc_Pose();
 
 void calc_Likelyhood();
 
-struct particle_data {
-    double x, y, h, weight;
-};
 
 #endif

@@ -131,7 +131,7 @@ void generate_Particles(){
 
 //Predict movement on particles (Step 3):
 void predict_Movement(){
-  //Eric Y needs to finish triple imu fusion - and I need delta???  
+    
 }
 
 //Update sensor data (Step 4):
