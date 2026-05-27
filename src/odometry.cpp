@@ -41,29 +41,38 @@ static double avgHeadingDeg(double h1_deg, double h2_deg) {
 
 // Read heading from both IMUs, reject outlier if they disagree hard
 static double readHeadingDegBest(double currentFilteredDeg) {
-  double raw1 = imu1.get_heading();
-  double raw2 = imu2.get_heading();
-  raw1 = wrapDeg(90 - raw1); //Convert from "compass" to math unit circle units
-  raw2 = wrapDeg(90 - raw2); // Math conversion is: 90 - compassD = mathD
+  std::vector<double> rawVal = {};
+  std::vector<bool> bad = {};
+  int badCnt = 0;
 
-  bool bad1 = std::isnan(raw1) || std::isinf(raw1);
-  bool bad2 = std::isnan(raw2) || std::isinf(raw2);
-
-  if (bad1 && bad2) return currentFilteredDeg;
-  if (bad1) return headingToSignedDeg(raw2);
-  if (bad2) return headingToSignedDeg(raw1);
-
-  double h1 = headingToSignedDeg(raw1);
-  double h2 = headingToSignedDeg(raw2);
-
-  double diff = std::fabs(angleDiffDeg(h1, h2));
-  if (diff > 25.0) {
-    double e1 = std::fabs(angleDiffDeg(h1, currentFilteredDeg));
-    double e2 = std::fabs(angleDiffDeg(h2, currentFilteredDeg));
-    return (e1 <= e2) ? h1 : h2;
+  for (auto imu : imus) {
+    double raw = imu.get_heading();
+    //Convert from "compass" to math unit circle units
+    raw = wrapDeg(90 - raw); // Math conversion is: 90 - compassD = mathD
+    rawVal.push_back(raw);
   }
+  for (double raw : rawVal) {
+    bool temp = std::isnan(raw) || std::isinf(raw);
+    if (temp) badCnt++;
+    bad.push_back(temp);
+  }
+  // if (badCnt == imus.size()) return currentFilteredDeg; //If all imus are bad return last measured value
+  // if (bad1 && bad2) return currentFilteredDeg;
+  // if (bad1) return headingToSignedDeg(raw2);
+  // if (bad2) return headingToSignedDeg(raw1);
 
-  return avgHeadingDeg(h1, h2);
+  // double h1 = headingToSignedDeg(raw1);
+  // double h2 = headingToSignedDeg(raw2);
+
+  // double diff = std::fabs(angleDiffDeg(h1, h2));
+  // if (diff > 25.0) {
+  //   double e1 = std::fabs(angleDiffDeg(h1, currentFilteredDeg));
+  //   double e2 = std::fabs(angleDiffDeg(h2, currentFilteredDeg));
+  //   return (e1 <= e2) ? h1 : h2;
+  // }
+
+  // return avgHeadingDeg(h1, h2);
+  return 1.0;
 }
 
 // Read gyro z rate (deg/s) from both IMUs, average, low-pass

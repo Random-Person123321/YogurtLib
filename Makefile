@@ -11,7 +11,7 @@ FWDIR:=$(ROOT)/firmware
 BINDIR=$(ROOT)/bin
 SRCDIR=$(ROOT)/src
 INCDIR=$(ROOT)/include
-EXTRA_INCDIR = ../YogurtLib/include
+# EXTRA_INCDIR = ../YogurtLib/include
 
 WARNFLAGS+=
 EXTRA_CFLAGS=
@@ -25,11 +25,11 @@ USE_PACKAGE:=1
 EXCLUDE_COLD_LIBRARIES:= 
 
 # Set this to 1 to add additional rules to compile your project as a PROS library template
-IS_LIBRARY:=0
+IS_LIBRARY:=1
 # TODO: CHANGE THIS! 
 # Be sure that your header files are in the include directory inside of a folder with the
 # same name as what you set LIBNAME to below.
-LIBNAME:=libbest
+LIBNAME:=YogurtLib
 VERSION:=1.0.0
 # EXCLUDE_SRC_FROM_LIB= $(SRCDIR)/unpublishedfile.c
 # this line excludes opcontrol.c and similar files

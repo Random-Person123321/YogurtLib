@@ -8,55 +8,7 @@ On a global scale
 // https://pros.cs.purdue.edu/v5/api/c/rtos.html#task-create
 // https://pros.cs.purdue.edu/v5/tutorials/topical/multitasking.html
 
-pros::Motor leftFront(-16);
-pros::Motor leftMiddle(-13);
-pros::Motor leftBack(-14);
-pros::Motor rightFront(2);
-pros::Motor rightMiddle(3);
-pros::Motor rightBack(4);
 
-pros::Motor intake(-11);
-pros::Motor catapult(20);
-
-pros::MotorGroup left_mg({-16, -13, -14});    // Creates a motor group with forwards ports 16 & 18 and reversed port 17
-pros::MotorGroup right_mg({2, 3, 4});  // Creates a motor group with forwards port 12 & 14 and reversed ports 13
-pros::MotorGroup intakes({-11}); // Create motor group for spinning all intakes
-
-pros::adi::DigitalOut Matchload('H');
-pros::adi::DigitalOut Blocker('E');
-pros::adi::DigitalOut Mid('G');
-pros::adi::DigitalOut Bunny('F');
-pros::adi::DigitalOut Lift('D');
-
-//All Sensors 
-pros::Imu imu1(10);
-pros::Imu imu2(15);
-pros::Rotation verticalOdom(1);
-pros::Rotation horizontalOdom(22);
-pros::Rotation cata(19);
-pros::Distance bD(23);
-pros::Distance LD(17);
-pros::Distance fD(5);
-pros::Distance rD(6);
-
-pros::Controller master(pros::E_CONTROLLER_MASTER);
-
-//Park Variables
-bool Parked = false;
-bool Last2ButtonPressed = false;
-
-//Jam detect acivation
-bool activateJamDetection = false;
-
-//Time stuff (Clean?)
-int startTime = 0;
-int timeUsed = 0;
-
-//Print time used
-bool UseTime = false;
-
-RobotPose pose = {0.0, 0.0, 0.0};
-double odomOffset = 0.0;
 
 
 
@@ -125,14 +77,6 @@ void autonomous() {
     //SAWP(); 
     // test();
     // tuneOffset();
-
-    /*
-    # Go into your season repo
-    cd ../2025-2026PushBack
-
-    # Add YogurtLib as a subtree inside a "libraries" folder
-    git subtree add --prefix libraries/YogurtLib https://github.com/YourUsername/YogurtLib.git main --squash
-    */
 }
 
 /**
@@ -289,7 +233,7 @@ void opcontrol() {
 
     //     if (master.get_digital(pros::E_CONTROLLER_DIGITAL_B)){
     //         intakes.move_voltage(12000);
-    //         score_mid(3800, 1500);
+
     //     }
 
 
@@ -329,7 +273,9 @@ void opcontrol() {
     //     //     master.print(0,0,"raw:%.0f pose:%.0f", 90 - imu1.get_heading(), pose.heading);
     //     // }
 
-
+    //     for (int i = 0; i < imus.size(); i++) {
+	// 		pros::lcd::print(i, "%.2lf", imus[i].get_heading());
+	// 	}
     //     pros::delay(20); // Run for 20 ms then update
     // }
 }
