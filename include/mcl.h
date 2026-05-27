@@ -6,9 +6,9 @@
 
 void update_Particle_Num();
 
-void predict_Movement();
-
 void generate_Particles();
+
+void predict_Movement();
 
 void update_Sensors();
 
@@ -18,8 +18,5 @@ void calc_Pose();
 
 void calc_Likelyhood();
 
-struct particle_data {
-    double x, y, h, weight;
-};
 
 #endif
