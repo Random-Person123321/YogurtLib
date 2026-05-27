@@ -121,6 +121,7 @@ extern pros::Rotation cata;
 
 extern pros::Imu imu1;
 extern pros::Imu imu2;
+extern std::vector <pros::Imu> imus;
 
 extern pros::MotorGroup left_mg;
 extern pros::MotorGroup right_mg;
