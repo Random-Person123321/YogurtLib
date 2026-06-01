@@ -5,18 +5,12 @@
 
 /*
 TO DO:
-1. Add randomness to particle spawning while getting mother particle -> Currently gives an error
-2. Add reset at start weight and MCL reset for autons (Similar to reset_odom)
-3. Add motion prediction
-4. Add partical weight
-5. Add pose calculation
-6. Add weight array
-7. Add likelihood calculation based off weighted particles - than move the used particles into m_particles (Mother Particle) vector
-8. Add task
-9. Tune partical number
-10. Map feild
+1. Add randomizing to particle movement -> Moved into odom task
+2. Add noise to the sensor readings
+3. Add feild map as a vector -> measurements
+4. Add Particle weighing
+5. Add Adaptive part of AMCL -> Need likely hood calculations
 */
-
 
 ///////////////////////////////////
 //// Define variables for MCL ////

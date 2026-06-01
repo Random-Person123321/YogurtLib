@@ -1,5 +1,6 @@
 #include "main.h"
 #include <iomanip>
+#include <random>
 
 // state for odom tick deltas (must be reset-safe)
 static double g_lastVertTicks = 0.0;
@@ -171,6 +172,19 @@ void updateOdometry(void* param) {
   const int stepMs = 10; //30 ms?
   const double dt = stepMs / 1000.0;
 
+  std::random_device rd;
+    
+    // 2. Initialize the standard Mersenne Twister engine with the seed
+  std::mt19937 gen(rd());
+    
+  // 3. Define the distribution range [inclusive, inclusive]
+  // std::uniform_int_distribution<> distr(1, 100); 
+  std::uniform_real_distribution<double> double_distr(-1.5, 1.5); // For decimals between 0.0 and 1.0
+
+
+  // 4. Generate a random number
+  double random_head = double_distr(gen);
+
   while (true) {
     double vNow = verticalOdom.get_position();
     double hNow = horizontalOdom.get_position();
@@ -180,7 +194,7 @@ void updateOdometry(void* param) {
     // double headDeg = updateHeadingFilter(dt);
     double headDeg = wrapDeg(getCurrentHeading());
 
-    double dHeadDeg = angleDiffDeg(headDeg, g_lastHeadingDeg);
+    double dHeadDeg = angleDiffDeg(headDeg, g_lastHeadingDeg) + double_distr(gen); //Adds random heading motion to particles
     double dTheta = deg2rad(dHeadDeg);
 
     double dV = (vNow - g_lastVertTicks) * V_IN_PER_TICK;

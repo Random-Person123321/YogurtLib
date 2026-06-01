@@ -47,15 +47,6 @@ const double VERT_RIGHT_OFFSET = 0.38; //Right = positive
 
 // const double LOOKAHEAD = 12.0;
 
-// Define Hardware with extern here if using multiple files
-struct Drivetrain{
-    pros::Motor& lfront;
-    pros::Motor& lmiddle;
-    pros::Motor& lback;
-    pros::Motor& rfront;
-    pros::Motor& rmiddle;
-    pros::Motor& rback;
-};
 
 enum struct PursuitDir {
   Forward,
@@ -178,6 +169,7 @@ extern std::vector<particle_data> particles;
 #include "paths.h"
 #include "main.h"
 #include "brain_photo.h"
+#include "control.hpp"
 
 /**
  * If you find doing pros::Motor() to be tedious and you'd prefer just to do

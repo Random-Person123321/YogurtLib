@@ -1,27 +1,6 @@
 #include "main.h"
 
-struct Settle {
-  double errTol;
-  double velTol;
-  int settleMs;
 
-  double lastErr = 1e9;
-  int goodMs = 0;
-
-  void reset() { lastErr = 1e9; goodMs = 0; }
-
-  bool update(double err, double dt) {
-    double vel = (dt > 0) ? std::fabs((err - lastErr) / dt) : 1e9;
-    lastErr = err;
-
-    if (std::fabs(err) < errTol && vel < velTol) {
-      goodMs += (int)std::round(dt * 1000.0);
-    } else {
-      goodMs = 0;
-    }
-    return goodMs >= settleMs;
-  }
-};
 
 // ---------- DRIVE STRAIGHT (field-consistent) ----------
 int driveStraight(double distanceInches,
@@ -32,8 +11,8 @@ int driveStraight(double distanceInches,
                   double minVoltage) {
 
   // Outputs are in mV. These are safe starter values; tune kP first.
-  PID distPID(525.0, 0.0, 33.0, 3.0);     // mV per inch error-ish
-  PID headPID(300.0, 0.0, 5.0, 2.0);     // mV per degree error-ish
+  yogurt::PID distPID(525.0, 0.0, 33.0, 3.0);     // mV per inch error-ish
+  yogurt::PID headPID(300.0, 0.0, 5.0, 2.0);     // mV per degree error-ish
 
   distPID.reset();
   headPID.reset();
@@ -56,7 +35,7 @@ int driveStraight(double distanceInches,
 
   double prevL = 0.0, prevR = 0.0;
 
-  Settle settle;
+  yogurt::Settle settle;
   settle.errTol = 0.5;     // inches
   settle.velTol = 1.0;      // inches/s
   settle.settleMs = 250;
@@ -124,11 +103,11 @@ void turnToAngle(double targetAngle,
                  double maxVoltage,
                  double slewRate) {
 
-  PID turnPID(120.0, 0.0, 15.35, 2.0);  // mV/deg //11 //120kp
+  yogurt::PID turnPID(120.0, 0.0, 15.35, 2.0);  // mV/deg //11 //120kp
   //260kp
   turnPID.reset();
 
-  Settle settle;
+  yogurt::Settle settle;
   settle.errTol = 0.75;     // degrees
   settle.velTol = 8.0;     // 8 deg/s
   settle.settleMs = 200;
@@ -341,7 +320,7 @@ FollowResult followPath(const std::vector<std::pair<double, double>>& path,
   double lastEndDist = 1e9;
 
   int noProgressMs = 0;
-  const double progressTol = 0.25; // inches
+  const double progressTol = 0.5; // 0.25 inches
   const int stuckMs = 500;
   int noLookMs = 0;
   const int noLookFailMs = 800;
@@ -365,10 +344,13 @@ FollowResult followPath(const std::vector<std::pair<double, double>>& path,
     }
 
     if (progressCheck) {
-      if (endDist > lastEndDist - progressTol) noProgressMs += 10;
-      else noProgressMs = 0;
-
-      lastEndDist = endDist;
+      if (endDist > lastEndDist - progressTol) {
+        noProgressMs += 10;
+      }
+      else {
+        lastEndDist = endDist;
+        noProgressMs = 0;
+      }
 
       if (noProgressMs >= stuckMs) {
         result= FollowResult::Stuck;
@@ -526,7 +508,7 @@ void turnToPoint(double targetX, double targetY, int timeout, double maxVoltage,
 }
 
 void swingToHeading(double targetHeading, bool leftSidePivot, int timeoutMs, double maxVoltage, double slewRate) {
-  PID swingPID(200.0, 0.0, 16.0, 2.0);
+  yogurt::PID swingPID(200.0, 0.0, 16.0, 2.0);
   swingPID.reset();
 
   int time = 0;

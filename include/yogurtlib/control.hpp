@@ -1,7 +1,7 @@
 #pragma once
 #include "main.h"
 
-namespace Yogurt {
+namespace yogurt {
 // ---- PID (uses dt, proven to work) ----
 class PID {
 private:
@@ -23,7 +23,7 @@ public:
         prevError = 0.0;
         first = true;
     }
-
+    
     // Best method: feed error directly
     double calculateError(double error, double dt) {
         if (dt <= 0) dt = 0.01;
@@ -51,4 +51,27 @@ public:
         return calculate(target, current, 0.01);
     }
 };
-}//Yogurt namespace
+
+struct Settle {
+  double errTol;
+  double velTol;
+  int settleMs;
+
+  double lastErr = 1e9;
+  int goodMs = 0;
+
+  void reset() { lastErr = 1e9; goodMs = 0; }
+
+  bool update(double err, double dt) {
+    double vel = (dt > 0) ? std::fabs((err - lastErr) / dt) : 1e9;
+    lastErr = err;
+
+    if (std::fabs(err) < errTol && vel < velTol) {
+      goodMs += (int)std::round(dt * 1000.0);
+    } else {
+      goodMs = 0;
+    }
+    return goodMs >= settleMs;
+  }
+};
+}//yogurt namespace
