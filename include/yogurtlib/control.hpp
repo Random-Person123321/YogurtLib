@@ -1,5 +1,6 @@
 #pragma once
 #include "main.h"
+#include <algorithm>
 
 namespace yogurt {
 // ---- PID (uses dt, proven to work) ----
@@ -31,9 +32,9 @@ public:
         integral += error * dt;
         if (maxIntegral != 0) {
             integral = std::clamp(integral, -maxIntegral, maxIntegral);
-    }
+        }
 
-    double derivative = 0.0;
+        double derivative = 0.0;
         if (!first) derivative = (error - prevError) / dt;
         first = false;
 
@@ -53,25 +54,28 @@ public:
 };
 
 struct Settle {
-  double errTol;
-  double velTol;
-  int settleMs;
+    double errTol;
+    double velTol;
+    int settleMs;
 
-  double lastErr = 1e9;
-  int goodMs = 0;
+    double lastErr = 1e9;
+    int goodMs = 0;
 
-  void reset() { lastErr = 1e9; goodMs = 0; }
+    void reset() { lastErr = 1e9; goodMs = 0; }
 
-  bool update(double err, double dt) {
-    double vel = (dt > 0) ? std::fabs((err - lastErr) / dt) : 1e9;
-    lastErr = err;
+    Settle(double errTolerance, double velocityTolerance, int settleMiliseconds)
+        : errTol(errTolerance), velTol(velocityTolerance), settleMs(settleMiliseconds) {}
+        
+    bool update(double err, double dt) {
+        double vel = (dt > 0) ? std::fabs((err - lastErr) / dt) : 1e9;
+        lastErr = err;
 
-    if (std::fabs(err) < errTol && vel < velTol) {
-      goodMs += (int)std::round(dt * 1000.0);
-    } else {
-      goodMs = 0;
+        if (std::fabs(err) < errTol && vel < velTol) {
+            goodMs += (int)std::round(dt * 1000.0);
+        } else {
+            goodMs = 0;
+        }
+        return goodMs >= settleMs;
     }
-    return goodMs >= settleMs;
-  }
 };
 }//yogurt namespace

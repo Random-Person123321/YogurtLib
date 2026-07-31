@@ -168,7 +168,6 @@ extern std::vector<particle_data> particles;
 #include "autonomous.h"
 #include "paths.h"
 #include "main.h"
-#include "brain_photo.h"
 #include "control.hpp"
 
 /**
