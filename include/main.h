@@ -59,7 +59,8 @@ enum struct FollowResult {
   Timeout,
   NoIntersection_TargetBehind,
   Stuck,
-  PathTooShort
+  PathTooShort,
+  Cancelled
 };
 
 // ---- Angle helpers (degrees) ----
@@ -83,7 +84,7 @@ inline double wrapRad(double a) {
   return a;
 }
 
-// Convert PROS get_heading() [0,360) to signed (-180,180]
+// Convert PROS get_heading() [0,360] to signed [-180,180]
 inline double headingToSignedDeg(double h) {
   if (h > 180.0) h -= 360.0;
   return wrapDeg(h);
@@ -100,48 +101,19 @@ inline double batteryScale() {
   return 12000.0 / (double)mv;
 }
 
-struct RobotPose { double x = 0.0, y = 0.0, heading = 0.0; };
-extern RobotPose pose;
+// struct RobotPose { double x = 0.0, y = 0.0, heading = 0.0; };
+// extern RobotPose pose;
+//HELLO HELLO HELLO
+//Please sort through global.cpp before finishing OOP
 extern double odomOffset;
 
-extern pros::Controller master;
-
-extern pros::Rotation verticalOdom;
-extern pros::Rotation horizontalOdom;
-extern pros::Rotation cata;
-
-extern pros::Imu imu1;
-extern pros::Imu imu2;
-extern std::vector <pros::Imu> imus;
-
-extern pros::MotorGroup left_mg;
-extern pros::MotorGroup right_mg;
-extern pros::Motor intake;
-extern pros::Motor catapult;
-extern pros::MotorGroup intakes;
-
-extern pros::adi::DigitalOut Matchload;
-extern pros::adi::DigitalOut Blocker;
-extern pros::adi::DigitalOut Mid;
-extern pros::adi::DigitalOut Bunny;
-extern pros::adi::DigitalOut Lift;
-
-extern pros::Distance bD;
-extern pros::Distance LD;
-extern pros::Distance fD;
-extern pros::Distance rD;
 
 extern bool activateJamDetection;
-extern bool activateIntakeStop;
-extern bool home;
-extern double startPosition;
-const extern double HcataRange;
-const extern double LcataRange;
 extern bool Parked;
 extern int startTime;
 extern int timeUsed;
 extern bool UseTime;
-extern int particle_Num;
+// extern int particle_Num;
 
 
 
@@ -160,16 +132,18 @@ extern std::vector<particle_data> particles;
 #include <cmath>
 #include <vector>
 #include "init.h"
-#include "sensors.h"
 #include "drive.h"
-#include "odometry.h"
 #include "misc.h"
-#include "pre_auton.h"
-#include "autonomous.h"
-#include "paths.h"
+#include "mcl.h"
 #include "main.h"
-#include "brain_photo.h"
-#include "control.hpp"
+#include "yogurtlib/control.hpp"
+#include "yogurtlib/pose.hpp"
+#include "yogurtlib/dt/motors.hpp"
+#include "yogurtlib/dt/dt.hpp"
+#include "yogurtlib/UI.hpp"
+#include "yogurtlib/global.hpp"
+
+#include "odometry.h"
 
 /**
  * If you find doing pros::Motor() to be tedious and you'd prefer just to do

@@ -2,13 +2,9 @@
 #define MISC_H_
 #include <string>
 
-
-void antiJam(void* param);
-
-
 void matchLoading(int time);
 
-double slew(double target, double prev, double maxDelta);
+// double slew(double target, double prev, double maxDelta);
 
 void tuneOffset();
 

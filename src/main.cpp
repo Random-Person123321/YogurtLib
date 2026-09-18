@@ -22,14 +22,11 @@ On a global scale
 void initialize() { //INIT SHOULD GO HERE!
     // startTime = pros::millis();
     // pros::lcd::initialize();
-    init_sensors();
     // pros::lcd::print(5, "Imu Calibrated");
     //Start tasks, such as odom and intake stopping
-    start_tasks();
+    // start_tasks();
     //Calls auton distance relocalizations
-    // SAWP_INIT();
-    // pros::lcd::print(5, "Distance Reset Completed");
-    init_brain_image();
+    classInit();
 }
 
 
@@ -65,18 +62,9 @@ void competition_initialize() {}
  * from where it left off.
  */
 void autonomous() {
-    // Field coords: origin at field center.
-    // +X = right (east), +Y = forward (north).
-    // Heading deg: 0 = +X, +90 = +Y, +-180 = -X, -90 = -Y.
     startTime = pros::millis();
     std::cout << "Autonomous Started!\n";
-    
-    //right();
-    //left();
-    skills();
-    //SAWP(); 
-    // test();
-    // tuneOffset();
+
 }
 
 /**

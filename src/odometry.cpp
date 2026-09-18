@@ -2,6 +2,22 @@
 #include <iomanip>
 #include <random>
 
+// TODO-REMOVE: getCurrentHeading/updateOdometry/resetOdometry/terminalDebug
+// are all superseded by Drivetrain's internal odometry (calibrate/setPose/
+// the private updateOdometry loop in dt.hpp). distanceReset() was already
+// explicitly decided against porting into Drivetrain — MCL will read the
+// raw distance sensors directly instead (see the plan's "Object layering"
+// section) — so it's safe to drop too.
+//
+// TODO-PORT (optional, not urgent): updateHeadingFilter/readGyroZ_dps/
+// resetHeadingFilter/avgHeadingDeg implement a gyro-predict + heading-correct
+// complementary filter that's more sophisticated than Drivetrain's current
+// readHeadingDeg() (which just circular-averages raw IMU headings, no gyro
+// fusion). This filter was already unused/disabled in the old code too
+// (readHeadingDegBest was used instead), so it isn't blocking anything —
+// but it's real, valuable design work worth porting into Drivetrain later
+// as a better heading estimator, not just deleting.
+
 // state for odom tick deltas (must be reset-safe)
 static double g_lastVertTicks = 0.0;
 static double g_lastHorizTicks = 0.0;
@@ -46,8 +62,8 @@ static double readHeadingDegBest(double currentFilteredDeg) {
   std::vector<bool> bad = {};
   int badCnt = 0;
 
-  for (auto imu : imus) {
-    double raw = imu.get_heading();
+  for (auto imu : drivetrain.odom.imus) {
+    double raw = imu->get_heading();
     //Convert from "compass" to math unit circle units
     raw = wrapDeg(90 - raw); // Math conversion is: 90 - compassD = mathD
     rawVal.push_back(raw);
@@ -76,62 +92,6 @@ static double readHeadingDegBest(double currentFilteredDeg) {
   return 1.0;
 }
 
-// Read gyro z rate (deg/s) from both IMUs, average, low-pass
-static double readGyroZ_dps() {
-  auto g1 = imu1.get_gyro_rate(); // x,y,z deg/s
-  auto g2 = imu2.get_gyro_rate();
-
-  bool ok1 = std::isfinite(g1.z);
-  bool ok2 = std::isfinite(g2.z);
-
-  double z = 0.0;
-  if (ok1 && ok2) z = 0.5 * (g1.z + g2.z);
-  else if (ok1)   z = g1.z;
-  else if (ok2)   z = g2.z;
-  else            z = g_gyroZ_dps;
-
-  g_gyroZ_dps = (1.0 - GYRO_LP_ALPHA) * g_gyroZ_dps + GYRO_LP_ALPHA * z;
-  return g_gyroZ_dps;
-}
-
-// Call every odom loop; returns filtered heading in degrees (-180,180]
-static double updateHeadingFilter(double dt) {
-  if (dt <= 0) dt = 0.01;
-
-  double currentDeg = g_headInit ? wrapDeg(rad2deg(g_headRad)) : 0.0;
-
-  // Predict
-  double gyroZ = readGyroZ_dps();
-  double predRad = g_headInit ? wrapRad(g_headRad + deg2rad(GYRO_SIGN * gyroZ) * dt) : 0.0;
-
-  // Measure
-  double predDeg = g_headInit ? wrapDeg(rad2deg(predRad)) : 0.0;
-  double measDeg = readHeadingDegBest(predDeg);
-  double measRad = deg2rad(measDeg);
-  // Low-pass the measurement on the circle to reduce IMU jitter
-    if (!g_measInit) {
-      g_measInit = true;
-      g_measRadLP = measRad;
-    } else {
-      double d = wrapRad(measRad - g_measRadLP);
-      g_measRadLP = wrapRad(g_measRadLP + MEAS_LP_ALPHA * d);
-    }
-    measRad = g_measRadLP;
-
-
-  // Correct
-  double errRad = wrapRad(measRad - predRad);
-  double fusedRad = wrapRad(predRad + CORRECT_GAIN * errRad);
-
-  if (!g_headInit) {
-    g_headInit = true;
-    g_headRad = measRad;
-    return wrapDeg(measDeg);
-  }
-
-  g_headRad = fusedRad;
-  return wrapDeg(rad2deg(g_headRad));
-}
 
 static void resetHeadingFilter(double headingDeg) {
   g_headInit = true;
@@ -145,94 +105,94 @@ double getCurrentHeading() {
   return readHeadingDegBest(current);
 }
 
-void resetOdometry(double startX, double startY, double startHeading) {
-  pose = {startX, startY, wrapDeg(startHeading)};
+// void resetOdometry(double startX, double startY, double startHeading) {
+//   pose = {startX, startY, wrapDeg(startHeading)};
 
-  double compassHeading = 90 - startHeading;
-  compassHeading = wrapDeg(compassHeading);
-  if (compassHeading < 0) compassHeading += 360;
-  imu1.set_heading(compassHeading);
-  imu2.set_heading(compassHeading);
+//   double compassHeading = 90 - startHeading;
+//   compassHeading = wrapDeg(compassHeading);
+//   if (compassHeading < 0) compassHeading += 360;
+//   imu1.set_heading(compassHeading);
+//   imu2.set_heading(compassHeading);
 
-  g_lastVertTicks = verticalOdom.get_position();
-  g_lastHorizTicks = horizontalOdom.get_position();
-  g_lastHeadingDeg = pose.heading;
+//   g_lastVertTicks = verticalOdom.get_position();
+//   g_lastHorizTicks = horizontalOdom.get_position();
+//   g_lastHeadingDeg = pose.heading;
 
-  resetHeadingFilter(pose.heading);
-}
+//   resetHeadingFilter(pose.heading);
+// }
 
 void updateOdometry(void* param) {
-  (void)param;
+  // (void)param;
 
-  const double V_IN_PER_TICK = inchesPerTick(VERT_DIAMETER);
-  const double H_IN_PER_TICK = inchesPerTick(HORIZ_DIAMETER);
+  // const double V_IN_PER_TICK = inchesPerTick(VERT_DIAMETER);
+  // const double H_IN_PER_TICK = inchesPerTick(HORIZ_DIAMETER);
 
-  resetOdometry(pose.x, pose.y, pose.heading);
+  // resetOdometry(pose.x, pose.y, pose.heading);
 
-  const int stepMs = 10; //30 ms?
-  const double dt = stepMs / 1000.0;
+  // const int stepMs = 10; //30 ms?
+  // const double dt = stepMs / 1000.0;
 
-  std::random_device rd;
+  // std::random_device rd;
     
-    // 2. Initialize the standard Mersenne Twister engine with the seed
-  std::mt19937 gen(rd());
+  //   // 2. Initialize the standard Mersenne Twister engine with the seed
+  // std::mt19937 gen(rd());
     
-  // 3. Define the distribution range [inclusive, inclusive]
-  // std::uniform_int_distribution<> distr(1, 100); 
-  std::uniform_real_distribution<double> double_distr(-1.5, 1.5); // For decimals between 0.0 and 1.0
+  // // 3. Define the distribution range [inclusive, inclusive]
+  // // std::uniform_int_distribution<> distr(1, 100); 
+  // std::uniform_real_distribution<double> double_distr(-1.5, 1.5); // For decimals between 0.0 and 1.0
 
 
-  // 4. Generate a random number
-  double random_head = double_distr(gen);
+  // // 4. Generate a random number
+  // double random_head = double_distr(gen);
 
-  while (true) {
-    double vNow = verticalOdom.get_position();
-    double hNow = horizontalOdom.get_position();
-    if (std::isnan(vNow) || std::isinf(vNow)) vNow = 0.0;
-    if (std::isnan(hNow) || std::isinf(hNow)) hNow = 0.0;
+  // while (true) {
+  //   double vNow = verticalOdom.get_position();
+  //   double hNow = horizontalOdom.get_position();
+  //   if (std::isnan(vNow) || std::isinf(vNow)) vNow = 0.0;
+  //   if (std::isnan(hNow) || std::isinf(hNow)) hNow = 0.0;
 
-    // double headDeg = updateHeadingFilter(dt);
-    double headDeg = wrapDeg(getCurrentHeading());
+  //   // double headDeg = updateHeadingFilter(dt);
+  //   double headDeg = wrapDeg(getCurrentHeading());
 
-    double dHeadDeg = angleDiffDeg(headDeg, g_lastHeadingDeg) + double_distr(gen); //Adds random heading motion to particles
-    double dTheta = deg2rad(dHeadDeg);
+  //   double dHeadDeg = angleDiffDeg(headDeg, g_lastHeadingDeg) + double_distr(gen); //Adds random heading motion to particles
+  //   double dTheta = deg2rad(dHeadDeg);
 
-    double dV = (vNow - g_lastVertTicks) * V_IN_PER_TICK;
-    double dH = (hNow - g_lastHorizTicks) * H_IN_PER_TICK;
+  //   double dV = (vNow - g_lastVertTicks) * V_IN_PER_TICK;
+  //   double dH = (hNow - g_lastHorizTicks) * H_IN_PER_TICK;
 
-    double forward = dV - (VERT_RIGHT_OFFSET * dTheta);
-    double left = dH - (HORIZ_FWD_OFFSET * dTheta);
+  //   double forward = dV - (VERT_RIGHT_OFFSET * dTheta);
+  //   double left = dH - (HORIZ_FWD_OFFSET * dTheta);
 
-    double mid = deg2rad(g_lastHeadingDeg) + dTheta * 0.5;
-    double cosT = std::cos(mid);
-    double sinT = std::sin(mid);
+  //   double mid = deg2rad(g_lastHeadingDeg) + dTheta * 0.5;
+  //   double cosT = std::cos(mid);
+  //   double sinT = std::sin(mid);
 
 
-    //MCL Particle updates:
-    for(int i = 0; i < particle_Num; i++){
-      double particlex = particles[i].x;
-      double particley = particles[i].y;
-      double particleh = particles[i].h;
-      particlex += forward * cosT - left * sinT;
-      particley += forward * sinT + left * cosT;
-      //Need to add noise + heading
+  //   //MCL Particle updates:
+  //   for(int i = 0; i < particle_Num; i++){
+  //     double particlex = particles[i].x;
+  //     double particley = particles[i].y;
+  //     double particleh = particles[i].h;
+  //     particlex += forward * cosT - left * sinT;
+  //     particley += forward * sinT + left * cosT;
+  //     //Need to add noise + heading
       
 
-      //Update particle with movement
-      particles[i].x = particlex;
-      particles[i].y = particley;
-      particles[i].h = particleh;
-    }
+  //     //Update particle with movement
+  //     particles[i].x = particlex;
+  //     particles[i].y = particley;
+  //     particles[i].h = particleh;
+  //   }
 
 
-    pose.heading = headDeg;
+  //   pose.heading = headDeg;
 
-    g_lastVertTicks = vNow;
-    g_lastHorizTicks = hNow;
-    g_lastHeadingDeg = headDeg;
+  //   g_lastVertTicks = vNow;
+  //   g_lastHorizTicks = hNow;
+  //   g_lastHeadingDeg = headDeg;
 
-    pros::delay(stepMs);
-  }
+  //   pros::delay(stepMs);
+  // }
 }
 
 // Distance relocalization (BLENDED, not teleport)
@@ -242,81 +202,81 @@ void distanceReset(pros::Distance& sensor,
                    bool isX, //Sensor on X or Y axis
                    bool sensorDirPositive, //+x East, +y North
                    double angleOffset) { //The angle offset the sensor is mounted at (Pointint up = (+) vice verca)
-  auto readInches = [&]() -> double {
-    int mm = sensor.get();
-    if (mm == PROS_ERR) return NAN;
-    return mm / 25.4;
-  };
+//   auto readInches = [&]() -> double {
+//     int mm = sensor.get();
+//     if (mm == PROS_ERR) return NAN;
+//     return mm / 25.4;
+//   };
 
-  angleOffset = std::abs(angleOffset);
-  angleOffset = deg2rad(angleOffset);
+//   angleOffset = std::abs(angleOffset);
+//   angleOffset = deg2rad(angleOffset);
 
-  double a = readInches(); pros::delay(34);
-  double b = readInches(); pros::delay(34);
-  double c = readInches();
+//   double a = readInches(); pros::delay(34);
+//   double b = readInches(); pros::delay(34);
+//   double c = readInches();
 
-  if (!std::isfinite(a) || !std::isfinite(b) || !std::isfinite(c)) return;
+//   if (!std::isfinite(a) || !std::isfinite(b) || !std::isfinite(c)) return;
 
-  double reading = (a + b + c) / 3.0;
-  if (reading < 1.5 || reading > 78.0) return;
-  // Adjust reading based on the angle offset the sensor is mounted at
-  reading = std::cos(angleOffset) * reading;
+//   double reading = (a + b + c) / 3.0;
+//   if (reading < 1.5 || reading > 78.0) return;
+//   // Adjust reading based on the angle offset the sensor is mounted at
+//   reading = std::cos(angleOffset) * reading;
 
-  if (std::fabs(a - b) > 2.0 || std::fabs(b - c) > 2.0 || std::fabs(a - c) > 2.0) return;
+//   if (std::fabs(a - b) > 2.0 || std::fabs(b - c) > 2.0 || std::fabs(a - c) > 2.0) return;
 
-  double sign = sensorDirPositive ? -1.0 : 1.0;
-  double corrected = knownFeaturePos + sign * (reading + sensorToCenterOffset);
+//   double sign = sensorDirPositive ? -1.0 : 1.0;
+//   double corrected = knownFeaturePos + sign * (reading + sensorToCenterOffset);
 
-  constexpr double alpha = 0.6; //0.35
-  if (isX) pose.x += (corrected - pose.x) * alpha;
-  else pose.y += (corrected - pose.y) * alpha;
-}
+//   constexpr double alpha = 0.6; //0.35
+//   if (isX) pose.x += (corrected - pose.x) * alpha;
+//   else pose.y += (corrected - pose.y) * alpha;
+// }
 
-void terminalDebug() {
-  int cnt = 0; //0 for temp, 1 for voltages, 2 for imus
-  while (true) {
-    // Snapshot pose (avoid partial update mid-print)
-    RobotPose p = pose;
+// void terminalDebug() {
+//   int cnt = 0; //0 for temp, 1 for voltages, 2 for imus
+//   while (true) {
+//     // Snapshot pose (avoid partial update mid-print)
+//     // RobotPose p = pose;
     
-    //Temperature and motor voltages prints to the controller
-    // if (pros::millis() - time >= 200) {
-    //   }
-    //   volt = !volt;
-    //   time = pros::millis();
-    // }
-    // switch(cnt) {
-    //   case 0: temps(); master.clear_line(1); cnt++;
-    //   case 1: voltages(); master.clear_line(2); cnt++;
-    //   case 2: inertials(); master.clear_line(0); cnt = 0;
-    // }
-    if (cnt == 0) {
-      temps(); master.clear_line(1); cnt++;
-    }
-    else if (cnt == 1) {
-      // voltages(); master.clear_line(2); cnt++;
-      printPose(); master.clear_line(2); cnt++;
-    }
-    else {
-      inertials(); master.clear_line(0); cnt = 0;
-    }
-    // pros::lcd::print(0, "X: %.1f", p.x);
-    // pros::lcd::print(1, "Y: %.1f", p.y);
-    // pros::lcd::print(2, "H: %.1f", p.heading);
-    // pros::lcd::print(3, "IMU1: %.0f", imu1.get_heading());
-    // pros::lcd::print(4, "IMU2: %.0f", imu2.get_heading());
-    /*
-    std::vector<double> left_drive = left_mg.get_temperature_all();
-    std::vector<double> right_drive = right_mg.get_temperature_all();
-    for (auto i : left_drive) {
-      std::cout << std::setprecision(1) << i << " ";
-    }
-    for (auto i : right_drive) {
-        std::cout << std::fixed << std::setprecision(1) << i << " ";
-    }
-    */
-    printf("(X: %.1lf, Y: %.1lf, H: %.1lf, MU1: %.1lf, MU2: %.1lf)", p.x, p.y, p.heading, imu1.get_heading(), imu2.get_heading());
-    std::cout << " Time: "<< (pros::millis() - startTime) / 1000 << "s\n";
-    pros::delay(200); // 5 Hz (safe)
+//     //Temperature and motor voltages prints to the controller
+//     // if (pros::millis() - time >= 200) {
+//     //   }
+//     //   volt = !volt;
+//     //   time = pros::millis();
+//     // }
+//     // switch(cnt) {
+//     //   case 0: temps(); master.clear_line(1); cnt++;
+//     //   case 1: voltages(); master.clear_line(2); cnt++;
+//     //   case 2: inertials(); master.clear_line(0); cnt = 0;
+//     // }
+//     if (cnt == 0) {
+//       temps(); master.clear_line(1); cnt++;
+//     }
+//     else if (cnt == 1) {
+//       // voltages(); master.clear_line(2); cnt++;
+//       printPose(); master.clear_line(2); cnt++;
+//     }
+//     else {
+//       inertials(); master.clear_line(0); cnt = 0;
+//     }
+//     // pros::lcd::print(0, "X: %.1f", p.x);
+//     // pros::lcd::print(1, "Y: %.1f", p.y);
+//     // pros::lcd::print(2, "H: %.1f", p.heading);
+//     // pros::lcd::print(3, "IMU1: %.0f", imu1.get_heading());
+//     // pros::lcd::print(4, "IMU2: %.0f", imu2.get_heading());
+//     /*
+//     std::vector<double> left_drive = left_mg.get_temperature_all();
+//     std::vector<double> right_drive = right_mg.get_temperature_all();
+//     for (auto i : left_drive) {
+//       std::cout << std::setprecision(1) << i << " ";
+//     }
+//     for (auto i : right_drive) {
+//         std::cout << std::fixed << std::setprecision(1) << i << " ";
+//     }
+//     */
+//     printf("(X: %.1lf, Y: %.1lf, H: %.1lf, MU1: %.1lf, MU2: %.1lf)", p.x, p.y, p.heading, imu1.get_heading(), imu2.get_heading());
+//     std::cout << " Time: "<< (pros::millis() - startTime) / 1000 << "s\n";
+//     pros::delay(200); // 5 Hz (safe)
 
-  }
+//   }
 }
