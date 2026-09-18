@@ -214,14 +214,18 @@ void yogurt::UI::data_screen(lv_event_t* e){
 }
 
 void yogurt::UI::auton_screen(lv_event_t* e){
-    lv_screen_load(auton_scr);
-    if (auton_list[current_auto].selected){
-        lv_obj_add_state(select_btn, LV_STATE_CHECKED);
-    } else {
-        lv_obj_remove_state(select_btn, LV_STATE_CHECKED);
+    if(!auton_list.empty()){
+        printf("ran");
+        lv_screen_load(auton_scr);
+        if (auton_list[current_auto].selected){
+            lv_obj_add_state(select_btn, LV_STATE_CHECKED);
+        } else {
+            lv_obj_remove_state(select_btn, LV_STATE_CHECKED);
+        }
+        lv_label_set_text(auton_name, auton_list[current_auto].name);
+        lv_image_set_src(field, auton_list[current_auto].file);
     }
-    lv_label_set_text(auton_name, auton_list[current_auto].name);
-    lv_image_set_src(field, auton_list[current_auto].file);
+    printf("Skipped");
 }
 
 void yogurt::UI::select_auto(lv_event_t* e){
