@@ -1,35 +1,6 @@
 #include "main.h"
 #include "yogurtlib/global.hpp"
 
-// TODO-REMOVE: leftFront/leftMiddle/leftBack/rightFront/rightMiddle/rightBack
-// were only ever used to build left_mg/right_mg below — dead now that
-// left_mg/right_mg get built straight from ports when wiring up DriveMotors.
-// pros::Motor leftFront(-16);
-// pros::Motor leftMiddle(-13);
-// pros::Motor leftBack(-14);
-// pros::Motor rightFront(2);
-// pros::Motor rightMiddle(3);
-// pros::Motor rightBack(4);
-
-// TODO-REMOVE: catapult/intake hardware — game-specific, not library material.
-// pros::Motor intake(-11);
-// pros::Motor catapult(20);
-
-// TODO-PORT: these are exactly what DriveMotors(left, right, trackWidth,
-// wheelDiameter, ...) needs — port into wherever the real `drivetrain`
-// instance gets constructed (see main.cpp), don't leave as loose globals.
-// pros::MotorGroup left_mg({-16, -13, -14});    // Creates a motor group with forwards ports 16 & 18 and reversed port 17
-// pros::MotorGroup right_mg({2, 3, 4});  // Creates a motor group with forwards port 12 & 14 and reversed ports 13
-// TODO-REMOVE: intakes motor group — game-specific.
-// pros::MotorGroup intakes({-11}); // Create motor group for spinning all intakes
-
-// TODO-REMOVE: pneumatics for last season's game mechanism — game-specific.
-// pros::adi::DigitalOut Matchload('H');
-// pros::adi::DigitalOut Blocker('E');
-// pros::adi::DigitalOut Mid('G');
-// pros::adi::DigitalOut Bunny('F');
-// pros::adi::DigitalOut Lift('D');
-
 // TODO-PORT: exactly what OdomSensors.imus / OdomSensors.vertical /
 // OdomSensors.horizontal need — port into the real `drivetrain`'s OdomSensors
 // when it's constructed, don't leave as loose globals. `cata` (catapult
@@ -52,15 +23,6 @@
 // port into wherever globals get wired up for real, don't leave commented out.
 // pros::Controller master(pros::E_CONTROLLER_MASTER);
 
-// TODO-REMOVE: catapult/matchload-era state, game-specific — not template-
-// library material (Parked, Last2ButtonPressed, activateJamDetection).
-//Park Variables
-bool Parked = false;
-bool Last2ButtonPressed = false;
-
-//Jam detect acivation
-bool activateJamDetection = false;
-
 // TODO-REMOVE (probably): generic match-timing bookkeeping, but check first
 // whether anything besides the old drive.cpp/odometry.cpp still reads these
 // (both of those are themselves marked for removal) before deleting.
@@ -70,11 +32,6 @@ int timeUsed = 0;
 
 //Print time used
 bool UseTime = false;
-
-// RobotPose pose = {0.0, 0.0, 0.0};
-// TODO-REMOVE: appears fully unused now — grep confirmed nothing reads
-// odomOffset outside of this declaration and its `extern` in main.h.
-double odomOffset = 0.0;
 
 //NEW
 //Just to help tie the different pieces of the library together
