@@ -44,12 +44,12 @@ lv_obj_t* yogurt::UI::error_lbl = nullptr;
 std::vector<yogurt::AutoSelection> yogurt::UI::auton_list = {};
 int yogurt::UI::selected_auto = 0;
 int yogurt::UI::current_auto = 0;
-constexpr std::string_view error_messages[8] = {
-                                   "CRITICAL ERROR: MINIMUM 1 IMU DRIFTING", 
-                                   "ERROR: MONTE CARLO LOCALIZATION LOST, REVERTED TO ODOM UNTIL IT RECOVERS",
-                                   "CRITICAL ERROR: MONTE CARLO LOCALIZATION DEAD, REVERTED TO ODOMETRY FOR THE REST OF THE TRACKING",
-                                   "WARNING: DRIVE MOTORS AT OVER 40 DEGREES, TAKE A BREAK IF POSSIBLE"
-                                                    };
+std::vector<std::string> yogurt::UI::error_messages = {
+    "CRITICAL ERROR: MINIMUM 1 IMU DRIFTING",
+    "ERROR: MONTE CARLO LOCALIZATION LOST, REVERTED TO ODOM UNTIL IT RECOVERS",
+    "CRITICAL ERROR: MONTE CARLO LOCALIZATION DEAD, REVERTED TO ODOMETRY FOR THE REST OF THE TRACKING",
+    "WARNING: DRIVE MOTORS AT OVER 40 DEGREES, TAKE A BREAK IF POSSIBLE"
+};
 
 
 //IMU Calibration
@@ -221,7 +221,6 @@ void yogurt::UI::data_screen(lv_event_t* e){
 
 void yogurt::UI::auton_screen(lv_event_t* e){
     if(!auton_list.empty()){
-        printf("ran");
         lv_screen_load(auton_scr);
         if (auton_list[current_auto].selected){
             lv_obj_add_state(select_btn, LV_STATE_CHECKED);
@@ -231,7 +230,6 @@ void yogurt::UI::auton_screen(lv_event_t* e){
         lv_label_set_text(auton_name, auton_list[current_auto].name);
         lv_image_set_src(field, auton_list[current_auto].file);
     }
-    printf("Skipped");
 }
 
 void yogurt::UI::select_auto(lv_event_t* e){
@@ -339,5 +337,6 @@ void yogurt::UI::display_error(ErrorType errors){
     if (error_screen_loaded == false){
         load_error_screen();
     }
+    lv_screen_load(error_scr);
     lv_label_set_text_fmt(error_lbl, "%s\n", error_messages.at(errors).c_str());
 }

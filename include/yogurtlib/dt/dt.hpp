@@ -120,7 +120,7 @@ enum class MotionResult {
     Running
 };
 
-std::string entostr (FollowResult result) {
+inline std::string entostr (FollowResult result) {
     int num = (int)result;
     // switch (num){
     //     case 0: return "ReachEnd";
@@ -249,7 +249,7 @@ public:
     MotionResult driveStraight(double distanceInches, int timeoutMs, DriveParams params = {}, bool async = false) {
         requestMotion();
         if (async) {
-            pros::Task task([=]() { driveStraight(distanceInches, timeoutMs, params, false); });
+            pros::Task task([=, this]() { driveStraight(distanceInches, timeoutMs, params, false); });
             endMotion();
             pros::delay(10);
             return MotionResult::Running;
@@ -258,7 +258,6 @@ public:
         if (params.maxVolt < 0.0) params.maxVolt = maxVoltage;
         if (params.slewRate < 0.0) params.slewRate = defaultSlew;
 
-        cancelRequested = false;
         drivePID.reset();
         angularPID.reset();
         driveSettle.reset();
@@ -271,6 +270,7 @@ public:
         double targetY = pose.y + distanceInches * std::sin(deg2rad(startHeading));
 
         double prevL = 0.0, prevR = 0.0;
+        double lastX = pose.x, lastY = pose.y;
 
         MotionResult result = MotionResult::Timeout;
         int elapsed = 0;
@@ -285,6 +285,10 @@ public:
                 result = MotionResult::Cancelled;
                 break;
             }
+
+            if (!progressPaused) progress = progress + std::hypot(pose.x - lastX, pose.y - lastY);
+            lastX = pose.x;
+            lastY = pose.y;
 
             double dx = targetX - pose.x;
             double dy = targetY - pose.y;
@@ -336,7 +340,7 @@ public:
     MotionResult turnToHeading(double targetDeg, int timeoutMs, TurnToHeadParams params = {}, bool async = false) {
         requestMotion();
         if (async) {
-            pros::Task task([=]() { turnToHeading(targetDeg, timeoutMs, params, false); });
+            pros::Task task([=, this]() { turnToHeading(targetDeg, timeoutMs, params, false); });
             endMotion();
             pros::delay(10);
             return MotionResult::Running;
@@ -345,9 +349,9 @@ public:
         if (params.maxVolt < 0.0) params.maxVolt = maxVoltage;
         if (params.slewRate < 0.0) params.slewRate = defaultSlew;
 
-        cancelRequested = false;
         turnPID.reset();
         turnSettle.reset();
+        double lastTheta = pose.theta;
 
         MotionResult result = MotionResult::Timeout;
         double prevV = 0.0;
@@ -361,6 +365,8 @@ public:
                 result = MotionResult::Cancelled;
                 break;
             }
+            if (!progressPaused) progress = progress + std::fabs(angleDiffDeg(pose.theta, lastTheta));
+            lastTheta = pose.theta;
 
             double err = angleDiffDeg(targetDeg, pose.theta);
             if (std::fabs(err) < 0.5) err = 0.0;
@@ -388,7 +394,7 @@ public:
     MotionResult turnToPoint(double x, double y, int timeoutMs, TurnToPointParams params = {}, bool async = false) {
         requestMotion();
         if (async) {
-            pros::Task task([=]() { turnToPoint(x, y, timeoutMs, params, false); });
+            pros::Task task([=, this]() { turnToPoint(x, y, timeoutMs, params, false); });
             endMotion();
             pros::delay(10);
             return MotionResult::Running;
@@ -402,18 +408,21 @@ public:
     }
 
     // Pivots about one side only (the other side stays stopped) to face `targetDeg`.
-    MotionResult swingToHeading(double targetDeg, bool leftSidePivot = true,
-                                 int timeoutMs, SwingToHeadingParams params = {}, bool async = false) {
+    MotionResult swingToHeading(double targetDeg, int timeoutMs,
+                                bool leftSidePivot = true, SwingToHeadingParams params = {}, bool async = false) {
+        requestMotion();
         if (async) {
-            pros::Task task([&]() { swingToHeading(targetDeg, leftSidePivot, timeoutMs, params, false);});
+            pros::Task task([=, this]() { swingToHeading(targetDeg, timeoutMs, leftSidePivot, params, false);});
+            endMotion();
             pros::delay(10);
-            return;
+            return MotionResult::Running;
         }
         
         if (params.maxVolt < 0.0) params.maxVolt = maxVoltage;
         if (params.slewRate < 0.0) params.slewRate = defaultSlew;
 
-        cancelRequested = false;
+        double lastTheta = pose.theta;
+
         swingPID.reset();
         swingSettle.reset();
 
@@ -429,6 +438,9 @@ public:
                 result = MotionResult::Cancelled;
                 break;
             }
+            
+            if (!progressPaused) progress = progress + std::fabs(angleDiffDeg(pose.theta, lastTheta));
+            lastTheta = pose.theta;
 
             double err = angleDiffDeg(targetDeg, pose.theta);
             if (swingSettle.update(err, dt)) {
@@ -449,17 +461,20 @@ public:
         }
 
         motors.stop(BrakeMode::Brake);
+        endMotion();
         return result;
     }
 
     // Drives to (x, y): pure pursuit by default, or turn-then-drive if
     // usePurePursuit is false.
-    FollowResult driveToPoint(double x, double y, int turnTimeout = 900, 
-                              int driveTimeout, DriveToPointParams params = {}, bool async = false) {
+    FollowResult driveToPoint(double x, double y, int turnTimeout, int driveTimeout, 
+                              DriveToPointParams params = {}, bool async = false) {
+        requestMotion();
         if (async){
-            pros::Task task([&]() { driveToPoint(x, y, turnTimeout, driveTimeout, params, false);});
+            pros::Task task([=, this]() { driveToPoint(x, y, turnTimeout, driveTimeout, params, false);});
+            endMotion();
             pros::delay(10);
-            return;
+            return FollowResult::Running;
         }
         
         if (params.maxVolt < 0.0) params.maxVolt = maxVoltage;
@@ -467,7 +482,9 @@ public:
         if (params.usePurePursuit) {
             std::vector<std::pair<double, double>> path = {{pose.x, pose.y}, {x, y}};
             PursuitDir dir = params.reversed ? PursuitDir::Reverse : PursuitDir::Forward;
-            return follow(path, 11.5, params.maxVolt, driveTimeout, 700.0, dir, false);
+            FollowResult result = follow(path, 11.5, params.maxVolt, driveTimeout, 700.0, dir, false);
+            endMotion();
+            return result;
         }
 
         double targetHeading = pose.angleTo(Pose(x, y));
@@ -476,13 +493,18 @@ public:
             targetHeading = wrapDeg(targetHeading + 180.0);
             sign = -1;
         }
+        progressPaused = true;
         if (turnToHeading(targetHeading, turnTimeout, {.maxVolt = params.maxVolt}) == MotionResult::Cancelled) {
+            endMotion();
             return FollowResult::Cancelled;
         }
+        progressPaused = false;
         double dist = pose.distanceTo(Pose(x, y));
         if (driveStraight(sign * dist, driveTimeout, {.maxVolt = params.maxVolt}) == MotionResult::Cancelled) {
+            endMotion();
             return FollowResult::Cancelled;
         }
+        endMotion();
         return FollowResult::ReachedEnd;
     }
 
@@ -490,16 +512,25 @@ public:
     FollowResult driveToPose(double x, double y, double headingDeg,
                              int turnTimeout, int driveTimeout,
                              DriveToPoseParams params = {}, bool async = false) {
+        requestMotion();
         if (async) {
-            pros::Task task([&]() { driveToPose(x, y, headingDeg, turnTimeout, driveTimeout, params, false);});
+            pros::Task task([=, this]() { driveToPose(x, y, headingDeg, turnTimeout, driveTimeout, params, false);});
+            endMotion();
             pros::delay(10);
-            return;
+            return FollowResult::Running;
         }
         FollowResult result = driveToPoint(x, y, turnTimeout, driveTimeout, {.usePurePursuit = params.usePurePursuit, .reversed = params.reversed, .maxVolt = params.maxVolt});
-        if (result == FollowResult::Cancelled) return result;
+        if (result == FollowResult::Cancelled) {
+            endMotion();
+            return result;
+        }
+        phase = 1;
+        progressPaused = true;
         if (turnToHeading(headingDeg, turnTimeout, {.maxVolt = params.maxVolt}) == MotionResult::Cancelled) {
+            endMotion();
             return FollowResult::Cancelled;
         }
+        endMotion();
         return result;
     }
 
@@ -634,6 +665,7 @@ public:
     }
  
     void tuneOffset() {
+        requestMotion();
         double SdV_ccw = 0, SdV_cw = 0;//Sum of delta Vertical over turns
         double SdH_ccw = 0, SdH_cw = 0;
         double Stheta_ccw = 0, Stheta_cw = 0;
@@ -685,6 +717,7 @@ public:
         motors.left->move_voltage(0);
         motors.right->move_voltage(0);
         pros::delay(1000);
+        endMotion();
     }
 
     void waitUntilDone(){
@@ -921,7 +954,6 @@ private:
     std::atomic<bool>   motionRunning{false};
     std::atomic<double> progress{0.0};
     std::atomic<int>    phase{0};
-    std::atomic<bool>   cancelRequested{false};
     bool progressPaused = false;
     int  motionDepth = 0;    
 
