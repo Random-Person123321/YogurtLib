@@ -40,7 +40,7 @@ bool UseTime = false;
 yogurt::UI uiobject;
 
 //Temporary
-yogurt::DriveMotors hi(nullptr, nullptr, 15, 3.2, 1.0);
+yogurt::DriveMotors hi(nullptr, nullptr, 15, 3.2);\
 pros::Imu imu1(1);
 pros::Imu imu2(2);
 pros::Imu imu3(3);
@@ -48,14 +48,13 @@ std::vector<pros::v5::Imu *> imus = {&imu1, &imu2, &imu3};
 
 yogurt::OdomSensors odometry(nullptr, 1.0, 0.0, nullptr, 1.0, 0.0, imus, nullptr, nullptr, nullptr, nullptr, 0.0, 0.0, 0.0, 0.0);
 yogurt::ControllerSettings hi2(1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 3);
-yogurt::PursuitProfile hello3((double) 1, (double) 1, (double) 1, (double) 1, (double) 1, (double) 1, (double) 1, (double) 1, (double) 1);
-// DriveMotors motors, OdomSensors odomSensors,
-            //    ControllerSettings driveSettings, ControllerSettings angularSettings, //Lateral for driveStraight, Angular for heading correction,
-            //    ControllerSettings turnSettings, ControllerSettings swingSettings, // turn for turn, swing for swing motion
-            //    PursuitProfile pursuit, double maxVoltage = 12000.0, double defaultSlew = 800.0
-yogurt::Drivetrain drivetrain(hi, odometry, hi2, hi2, hi2, hi2, hello3, 12, 1.0);
+// Drivetrain(DriveMotors motors, OdomSensors odomSensors,
+//            ControllerSettings driveSettings, ControllerSettings turnSettings, ControllerSettings swingSettings)
+// angularSettings/pursuit/maxVoltage/defaultSlew are no longer constructor args —
+// set drivetrain.pursuit / .maxVoltage / .defaultSlew / call setHeadingCorrectionGains() after.
+yogurt::Drivetrain drivetrain(hi, odometry, hi2, hi2, hi2);
 
-yogurt::UI task;
+
 //Temporary Belongs in main.cpp if not for the precompiled binary
 
 void classInit() {

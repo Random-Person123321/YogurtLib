@@ -2,7 +2,7 @@
 #include "yogurtlib/UI.hpp"
 
 yogurt::Drivetrain* yogurt::UI::drivetrainRef = nullptr;
-bool error_screen_loaded = false;
+bool yogurt::UI::error_screen_loaded = false;
 
 // Out-of-class definitions: every `static` member UI.hpp declares needs
 // exactly one of these somewhere, or it has a declaration but no storage.
@@ -41,9 +41,15 @@ lv_obj_t* yogurt::UI::auton_name = nullptr;
 lv_obj_t* yogurt::UI::error_data_btn = nullptr;
 lv_obj_t* yogurt::UI::error_lbl = nullptr;
 
-std::vector<yogurt::autos> yogurt::UI::auton_list = {};
+std::vector<yogurt::AutoSelection> yogurt::UI::auton_list = {};
 int yogurt::UI::selected_auto = 0;
 int yogurt::UI::current_auto = 0;
+constexpr std::string_view error_messages[8] = {
+                                   "CRITICAL ERROR: MINIMUM 1 IMU DRIFTING", 
+                                   "ERROR: MONTE CARLO LOCALIZATION LOST, REVERTED TO ODOM UNTIL IT RECOVERS",
+                                   "CRITICAL ERROR: MONTE CARLO LOCALIZATION DEAD, REVERTED TO ODOMETRY FOR THE REST OF THE TRACKING",
+                                   "WARNING: DRIVE MOTORS AT OVER 40 DEGREES, TAKE A BREAK IF POSSIBLE"
+                                                    };
 
 
 //IMU Calibration
@@ -277,20 +283,35 @@ void yogurt::UI::update_data(lv_timer_t* t){
         snprintf(buf, sizeof(buf), "IMU3: %.2f", drivetrainRef->odom.imus[2]->get_heading());
         lv_label_set_text(imu3_lbl, buf);
 
-        // snprintf(buf, sizeof(buf), "X: %.2f", pose.x);
-        // lv_label_set_text(pose_x_lbl, buf);
+        snprintf(buf, sizeof(buf), "X: %.2f", drivetrainRef->getPose().x);
+        lv_label_set_text(pose_x_lbl, buf);
 
-        // snprintf(buf, sizeof(buf), "Y: %.2f", pose.y);
-        // lv_label_set_text(pose_y_lbl, buf);
+        snprintf(buf, sizeof(buf), "Y: %.2f", drivetrainRef->getPose().y);
+        lv_label_set_text(pose_y_lbl, buf);
 
-        // snprintf(buf, sizeof(buf), "H: %.2f", pose.heading);
-        // lv_label_set_text(heading_lbl, buf);
+        snprintf(buf, sizeof(buf), "H: %.2f", drivetrainRef->getPose().theta);
+        lv_label_set_text(heading_lbl, buf);
     }
     if (auto_check){
         if(pros::competition::is_autonomous()){
             yogurt::UI::logo_screen(nullptr);
-            auto_check == false;
+            auto_check = false;
         }
+    }
+    //Drivetrain temperature checks
+    double drivetemp = 0.0;
+    std::vector<double> left_drive = drivetrainRef->motors.left->get_temperature_all();
+    std::vector<double> right_drive = drivetrainRef->motors.right->get_temperature_all();
+    double sum = 0;
+    for (auto i : left_drive) {
+        sum += i;
+    }
+    for (auto i : right_drive) {
+        sum += i;
+    }
+    drivetemp = sum / (left_drive.size() + right_drive.size());
+    if (drivetemp >= 40){
+        display_error(MOTORHOT);
     }
 }
 
@@ -314,9 +335,9 @@ void yogurt::UI::load_error_screen(){
     lv_obj_set_style_text_align(error_lbl, LV_TEXT_ALIGN_CENTER, 0);
 }
 
-void yogurt::UI::display_error(int errornumber){
+void yogurt::UI::display_error(ErrorType errors){
     if (error_screen_loaded == false){
         load_error_screen();
     }
-    
+    lv_label_set_text_fmt(error_lbl, "%s\n", error_messages.at(errors).c_str());
 }

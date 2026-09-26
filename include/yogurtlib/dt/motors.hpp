@@ -18,6 +18,14 @@ inline pros::motor_brake_mode_e_t toProsBrakeMode(BrakeMode mode) {
     }
 }
 
+inline BrakeMode toBrakeMode(pros::MotorBrake mode) {
+    switch (mode) {
+        case pros::MotorBrake::coast : return BrakeMode::Coast;
+        case pros::MotorBrake::hold :  return BrakeMode::Hold;
+        case pros::MotorBrake::brake : default: return BrakeMode::Brake;
+    }
+}
+
 // Raw drivetrain specs
 class DriveMotors {
 public:
@@ -25,9 +33,9 @@ public:
     pros::MotorGroup* right;
 
     DriveMotors(pros::MotorGroup* left, pros::MotorGroup* right,
-                double trackWidth, double wheelDiameter, double externalGearRatio = 1.0)
+                double trackWidth, double wheelDiameter)
         : left(left), right(right),
-          trackWidth(trackWidth), wheelDiameter(wheelDiameter), externalGearRatio(externalGearRatio) {}
+          trackWidth(trackWidth), wheelDiameter(wheelDiameter) {}
 
     // Direct motor voltage, in mV [-12000, 12000].
     void setVoltage(double leftMv, double rightMv) const {
@@ -59,12 +67,10 @@ public:
 
     double getTrackWidth() const { return trackWidth; }
     double getWheelDiameter() const { return wheelDiameter; }
-    double getGearRatio() const { return externalGearRatio; }
 
 private:
     double trackWidth;      // inches, center-to-center of left/right wheels
     double wheelDiameter;   // inches
-    double externalGearRatio;
 };
 
 } // namespace yogurt

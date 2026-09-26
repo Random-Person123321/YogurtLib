@@ -8,10 +8,17 @@ namespace yogurt {class Drivetrain;} // Declaration, definition in dt.hpp
 
 namespace yogurt {
 
-struct autos {
+struct AutoSelection{
     const char* name;
     const char* file;
     bool selected = false;
+};
+
+enum ErrorType {
+    IMUDRIFT,
+    MCLLOST,
+    MCLDEAD,
+    MOTORHOT,
 };
 
 class UI {
@@ -19,7 +26,7 @@ class UI {
     static Drivetrain* drivetrainRef;
 
     static bool do_data_updates;
-    bool error_screen_loaded;
+    static bool error_screen_loaded;
     static int current_auto;
     static bool auto_check;
     
@@ -61,12 +68,11 @@ class UI {
     static lv_obj_t* error_data_btn;
     static lv_obj_t* error_lbl;
 
+    static std::vector<std::string> error_messages;
 
-    void load_error_screen();
 
+    static void load_error_screen();
     
-    static void IMUcalibrate(lv_event_t* e);
-
 
     //This loads screens for a LVGL event when a button is pressed
     static void home_screen(lv_event_t* e);
@@ -79,6 +85,7 @@ class UI {
     static void last_auto(lv_event_t* e);
     //LVGL task to update the IMU data on the data screen
     static void update_data(lv_timer_t* t);
+    static void IMUcalibrate(lv_event_t* e);
 
 
 
@@ -102,14 +109,14 @@ public:
      *  Example code:
      * 
      * @code
-     display_error(errornumber);
+     display_error(enum errors);
       @endcode
       @param
-        errornumber  pulls the error message from the vector that will display on the screen
+        enum errors  pulls the error message from the vector that will display on the screen
      */
-    void display_error(int errornumber);
+    static void display_error(ErrorType errors);
 
-    static std::vector <autos> auton_list;
+    static std::vector <AutoSelection> auton_list;
     static int selected_auto;
 
 };

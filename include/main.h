@@ -60,7 +60,8 @@ enum struct FollowResult {
   NoIntersection_TargetBehind,
   Stuck,
   PathTooShort,
-  Cancelled
+  Cancelled, 
+  Running
 };
 
 // ---- Angle helpers (degrees) ----
@@ -118,7 +119,7 @@ extern bool UseTime;
 
 
 struct particle_data {
-    double x, y, h, weight;
+	double x, y, h, weight;
 };
 
 extern std::vector<particle_data> particles;
@@ -131,9 +132,6 @@ extern std::vector<particle_data> particles;
 #include <algorithm>
 #include <cmath>
 #include <vector>
-#include "init.h"
-#include "drive.h"
-#include "misc.h"
 #include "mcl.h"
 #include "main.h"
 #include "yogurtlib/control.hpp"

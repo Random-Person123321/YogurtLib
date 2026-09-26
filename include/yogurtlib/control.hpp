@@ -31,9 +31,9 @@ public:
         integral += error * dt;
         if (maxIntegral != 0) {
             integral = std::clamp(integral, -maxIntegral, maxIntegral);
-    }
+        }
 
-    double derivative = 0.0;
+        double derivative = 0.0;
         if (!first) derivative = (error - prevError) / dt;
         first = false;
 
