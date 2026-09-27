@@ -41,6 +41,8 @@ public:
     void setVoltage(double leftMv, double rightMv) const {
         left->move_voltage((std::int32_t)leftMv);
         right->move_voltage((std::int32_t)rightMv);
+        lastL = leftMv;
+        lastR = rightMv;
     }
 
     // Arcade drive. power/turn in motor "move" units [-127, 127].
@@ -63,14 +65,17 @@ public:
         setBrakeMode(mode);
         left->move_voltage(0);
         right->move_voltage(0);
+        lastL = 0.0; lastR = 0.0;
     }
 
+    std::pair<double, double> getLastVolt() const {return std::make_pair(lastL, lastR); }
     double getTrackWidth() const { return trackWidth; }
     double getWheelDiameter() const { return wheelDiameter; }
 
 private:
     double trackWidth;      // inches, center-to-center of left/right wheels
     double wheelDiameter;   // inches
+    mutable double lastL = 0.0, lastR = 0.0; //Records last voltage for both sides
 };
 
 } // namespace yogurt

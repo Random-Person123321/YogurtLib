@@ -84,6 +84,8 @@ struct DriveParams {
 
 struct TurnToHeadParams {
     double maxVolt = -1.0;
+    double minVolt = 0.0;
+    double earlyExitRange = 0.0;
     double slewRate = -1.0; 
 };
 
@@ -91,11 +93,16 @@ struct TurnToHeadParams {
 
 struct TurnToPointParams {
     double maxVolt = -1.0;
+    double minVolt = 0.0;
+    double earlyExitRange = 0.0;
     bool reversed = false;
+    double slewRate = -1.0;
 };
 
 struct SwingToHeadingParams {
     double maxVolt = -1.0;
+    double minVolt = 0.0;
+    double earlyExitRange = 0.0;
     double slewRate = -1.0;
 };
 
@@ -103,13 +110,30 @@ struct DriveToPointParams {
     bool usePurePursuit = true; 
     bool reversed = false;
     double maxVolt = -1.0;
+    double minVolt = 0.0;
+    double earlyExitRange = 0.0;
+    double slewRate = -1.0;
 };
 
 struct DriveToPoseParams {
     double maxVolt = -1.0;
+    double minVolt = 0.0;
+    double earlyExitRange = 0.0;
     bool usePurePursuit = true;
     bool reversed = false;
+    double slewRate = -1.0;
+    
 };
+
+//IMU data struct
+struct ImuDataVars {
+    double last;
+    bool skip = false;
+    bool remove = false;
+    int rejects = 0;
+};
+
+
 
 // Outcome of a blocking point/turn motion (driveStraight, turnToHeading,
 // turnToPoint, swingToHeading).
@@ -158,7 +182,7 @@ public:
     
     //Default maxVoltage and slew
     double maxVoltage = 12000.0;
-    double defaultSlew = 800.0;
+    double defaultSlew = 600.0;
 
     // Static-friction feedforward: a small extra push (mV) added on top of
     // the PID output so the robot actually starts moving instead of stalling
@@ -249,7 +273,7 @@ public:
     MotionResult driveStraight(double distanceInches, int timeoutMs, DriveParams params = {}, bool async = false) {
         requestMotion();
         if (async) {
-            pros::Task task([=, this]() { driveStraight(distanceInches, timeoutMs, params, false); });
+            pros::Task task([this, distanceInches, timeoutMs, params]() { driveStraight(distanceInches, timeoutMs, params, false); });
             endMotion();
             pros::delay(10);
             return MotionResult::Running;
@@ -269,7 +293,7 @@ public:
         double targetX = pose.x + distanceInches * std::cos(deg2rad(startHeading));
         double targetY = pose.y + distanceInches * std::sin(deg2rad(startHeading));
 
-        double prevL = 0.0, prevR = 0.0;
+        auto [prevL, prevR] = motors.getLastVolt();
         double lastX = pose.x, lastY = pose.y;
 
         MotionResult result = MotionResult::Timeout;
@@ -297,7 +321,7 @@ public:
             double distErr = dx * cosH + dy * sinH;
             double headErr = angleDiffDeg(startHeading, pose.theta);
             
-            if (minV > 0 && (distErr * dir < 0 || fabs(distErr) < params.earlyExitRange)) {
+            if (chainExit(distErr, dir, minV, params.earlyExitRange)) {
                 result = MotionResult::Settled;
                 motionChain = true;
                 break;
@@ -318,7 +342,7 @@ public:
             //Desaturation
             double leftV = driveOut - turnOut;
             double rightV = driveOut + turnOut;
-            int m = std::max(fabs(leftV), fabs(rightV));
+            double m = std::max(fabs(leftV), fabs(rightV));
             if (m > maxV) { //Scale both down by same factor so larger side is maxVoltage while the other side is appropriately scaled down to respect turnOutput
                 leftV *= maxV / m;
                 rightV *= maxV / m;
@@ -340,7 +364,7 @@ public:
     MotionResult turnToHeading(double targetDeg, int timeoutMs, TurnToHeadParams params = {}, bool async = false) {
         requestMotion();
         if (async) {
-            pros::Task task([=, this]() { turnToHeading(targetDeg, timeoutMs, params, false); });
+            pros::Task task([this, targetDeg, timeoutMs, params]() { turnToHeading(targetDeg, timeoutMs, params, false); });
             endMotion();
             pros::delay(10);
             return MotionResult::Running;
@@ -352,9 +376,13 @@ public:
         turnPID.reset();
         turnSettle.reset();
         double lastTheta = pose.theta;
+        
+        auto [prevL, prevR] = motors.getLastVolt();
+        double maxV = fabs(params.maxVolt), minV = fabs(params.minVolt);
+        int dir = copysign(1, angleDiffDeg(targetDeg, pose.theta));
+        bool motionChain = false;
 
         MotionResult result = MotionResult::Timeout;
-        double prevV = 0.0;
         int elapsed = 0;
         const int stepMs = 10;
         const double dt = stepMs / 1000.0;
@@ -369,23 +397,32 @@ public:
             lastTheta = pose.theta;
 
             double err = angleDiffDeg(targetDeg, pose.theta);
-            if (std::fabs(err) < 0.5) err = 0.0;
-            if (turnSettle.update(err, dt)) {
+            
+            if (chainExit(err, dir, minV, params.earlyExitRange)) {
                 result = MotionResult::Settled;
+                motionChain = true;
                 break;
             }
+            if (turnSettle.update(err, dt)) {
+                    result = MotionResult::Settled;
+                    break;
+            }
+            // if (std::fabs(err) < 0.5) {err = 0.0;
+                // originally part of update as a deadband
+            // }
 
             double out = turnPID.calculateError(err, dt);
             if (std::fabs(err) > turnKsThreshold) out += std::copysign(turnKs, err);
-
-            double v = limitOutput(out, prevV, -params.maxVolt, params.maxVolt, params.slewRate);
-
-            motors.setVoltage(-v, v);
+            out = clampd(out, -maxV, maxV);
+            if (minV > 0.0 && fabs(out) < minV) out = copysign(minV, err);
+            double leftV = limitOutput(out, prevL, -maxV, maxV, params.slewRate);
+            double rightV = limitOutput(out, prevR, -maxV, maxV, params.slewRate);
+            motors.setVoltage(leftV, rightV);
+            
             pros::Task::delay_until(&prevTime, stepMs);
             elapsed += stepMs;
         }
-
-        motors.stop(BrakeMode::Brake);
+        if(!motionChain) motors.stop(BrakeMode::Brake);
         endMotion();
         return result;
     }
@@ -394,15 +431,18 @@ public:
     MotionResult turnToPoint(double x, double y, int timeoutMs, TurnToPointParams params = {}, bool async = false) {
         requestMotion();
         if (async) {
-            pros::Task task([=, this]() { turnToPoint(x, y, timeoutMs, params, false); });
+            pros::Task task([this, x, y, timeoutMs, params]() { turnToPoint(x, y, timeoutMs, params, false); });
             endMotion();
             pros::delay(10);
             return MotionResult::Running;
         }
+
+        if (params.maxVolt < 0.0) params.maxVolt = maxVoltage;
+        if (params.slewRate < 0.0) params.slewRate = defaultSlew;
         
         double targetHeading = pose.angleTo(Pose(x, y));
         if (params.reversed) targetHeading = wrapDeg(targetHeading + 180.0);
-        MotionResult result = turnToHeading(targetHeading, timeoutMs, {.maxVolt = params.maxVolt});
+        MotionResult result = turnToHeading(targetHeading, timeoutMs, {.maxVolt = params.maxVolt, .slewRate =params.slewRate}, false);
         endMotion();
         return result;
     }
@@ -412,7 +452,7 @@ public:
                                 bool leftSidePivot = true, SwingToHeadingParams params = {}, bool async = false) {
         requestMotion();
         if (async) {
-            pros::Task task([=, this]() { swingToHeading(targetDeg, timeoutMs, leftSidePivot, params, false);});
+            pros::Task task([this, targetDeg, timeoutMs, leftSidePivot, params]() { swingToHeading(targetDeg, timeoutMs, leftSidePivot, params, false);});
             endMotion();
             pros::delay(10);
             return MotionResult::Running;
@@ -426,11 +466,12 @@ public:
         swingPID.reset();
         swingSettle.reset();
 
+        // double maxV = fabs(params.)
+        
         MotionResult result = MotionResult::Timeout;
         int time = 0;
         const int stepMs = 10;
         const double dt = stepMs / 1000.0;
-        double prevV = 0.0;
         std::uint32_t prevTime = pros::millis();
 
         while (time < timeoutMs) {
@@ -471,13 +512,14 @@ public:
                               DriveToPointParams params = {}, bool async = false) {
         requestMotion();
         if (async){
-            pros::Task task([=, this]() { driveToPoint(x, y, turnTimeout, driveTimeout, params, false);});
+            pros::Task task([this, x, y, turnTimeout, driveTimeout, params]() { driveToPoint(x, y, turnTimeout, driveTimeout, params, false);});
             endMotion();
             pros::delay(10);
             return FollowResult::Running;
         }
         
         if (params.maxVolt < 0.0) params.maxVolt = maxVoltage;
+        if (params.slewRate < 0.0) params.slewRate = defaultSlew;
 
         if (params.usePurePursuit) {
             std::vector<std::pair<double, double>> path = {{pose.x, pose.y}, {x, y}};
@@ -494,13 +536,13 @@ public:
             sign = -1;
         }
         progressPaused = true;
-        if (turnToHeading(targetHeading, turnTimeout, {.maxVolt = params.maxVolt}) == MotionResult::Cancelled) {
+        if (turnToHeading(targetHeading, turnTimeout, {.maxVolt = params.maxVolt, .minVolt = params.minVolt, .earlyExitRange = params.earlyExitRange, .slewRate = params.slewRate}, false) == MotionResult::Cancelled) {
             endMotion();
             return FollowResult::Cancelled;
         }
         progressPaused = false;
         double dist = pose.distanceTo(Pose(x, y));
-        if (driveStraight(sign * dist, driveTimeout, {.maxVolt = params.maxVolt}) == MotionResult::Cancelled) {
+        if (driveStraight(sign * dist, driveTimeout, {.maxVolt = params.maxVolt, .minVolt = params.minVolt, .earlyExitRange = params.earlyExitRange, .slewRate = params.slewRate}, false) == MotionResult::Cancelled) {
             endMotion();
             return FollowResult::Cancelled;
         }
@@ -514,19 +556,19 @@ public:
                              DriveToPoseParams params = {}, bool async = false) {
         requestMotion();
         if (async) {
-            pros::Task task([=, this]() { driveToPose(x, y, headingDeg, turnTimeout, driveTimeout, params, false);});
+            pros::Task task([this, x, y, headingDeg, turnTimeout, driveTimeout, params]() { driveToPose(x, y, headingDeg, turnTimeout, driveTimeout, params, false);});
             endMotion();
             pros::delay(10);
             return FollowResult::Running;
         }
-        FollowResult result = driveToPoint(x, y, turnTimeout, driveTimeout, {.usePurePursuit = params.usePurePursuit, .reversed = params.reversed, .maxVolt = params.maxVolt});
+        FollowResult result = driveToPoint(x, y, turnTimeout, driveTimeout,  {.usePurePursuit = params.usePurePursuit, .reversed = params.reversed, .maxVolt = params.maxVolt, .minVolt = params.minVolt, .earlyExitRange = params.earlyExitRange, .slewRate = params.slewRate}, false);
         if (result == FollowResult::Cancelled) {
             endMotion();
             return result;
         }
-        phase = 1;
+
         progressPaused = true;
-        if (turnToHeading(headingDeg, turnTimeout, {.maxVolt = params.maxVolt}) == MotionResult::Cancelled) {
+        if (turnToHeading(headingDeg, turnTimeout, {.maxVolt = params.maxVolt, .minVolt = params.minVolt, .earlyExitRange = params.earlyExitRange, .slewRate = params.slewRate}, false) == MotionResult::Cancelled) {
             endMotion();
             return FollowResult::Cancelled;
         }
@@ -730,10 +772,12 @@ public:
         while (motionRunning.load() && progress.load() < target);
     }
 
-    void waitUntilPhase(int n){
-        do pros::delay(25);
-        while (motionRunning.load() && phase.load() < n);
-    }
+    //ODOM VARIABLES:
+    double tolerance = 5.0; //Degrees IMU's are allowed to drift before being excluded from averaging
+    double fastTolerance = 0.05; //Percent that tolerance scales based on fast turns
+    double maxTurnSpeed = 720.0; //Maximum speed a IMU can measure, if an IMU reads above this it is ignored
+
+
 private:
     // No gains by default (no correction) until setHeadingCorrectionGains() is called.
     PID angularPID{0.0, 0.0, 0.0, 0.0}; // Heading correction
@@ -749,12 +793,18 @@ private:
     double lastHorizTicks = 0.0;
     double lastHeadingDeg = 0.0;
 
+    double lastFused = 0.0;
+    double totalHeading = 0.0;
+
     bool odomTaskStarted = false;
     std::atomic<bool> cancelRequested{false};
 
+    std::vector <yogurt::ImuDataVars> imuData;
+
     // //Asymetrical slew
     double slew(double target, double prev, double maxDelta) const{
-        double delta = target - prev;
+        if (std::signbit(target) != std::signbit(prev)) prev = 0.0; // A change of direction counts as braking
+        double delta = target - prev; // A slowdown towards zero is free
         if (fabs(target) > fabs(prev) && fabs(delta) > maxDelta) {
             // Limit acceleration toward the target without overshooting it
             return prev + copysign(maxDelta, delta);
@@ -765,12 +815,17 @@ private:
     // Applies battery-voltage scaling, a slew-rate limit, and clamping — the
     // sequence every motor command in this class goes through before it's sent.
     double limitOutput(double v, double& prev, double minV, double maxV, double slewRate) const {
-        double scale = batteryScale();
-        v = clampd(v * scale, minV, maxV);
-        v = slew(v, prev, slewRate);
+        // double scale = batteryScale();
+        // v = clampd(v * scale, minV, maxV);
         v = clampd(v, minV, maxV);
+        v = slew(v, prev, slewRate);
         prev = v;
         return v;
+    }
+
+    bool chainExit (double error, int dir, double minV, double earlyExitRange) {
+        if (minV <= 0.0) return false;
+        return error * dir < 0.0 || fabs(error) < earlyExitRange;
     }
 
     static double inchesPerTick(double wheelDiamIn) {
@@ -793,6 +848,53 @@ private:
         }
         if (n == 0) return pose.theta;
         return wrapDeg(rad2deg(std::atan2(sumSin, sumCos)));
+    }
+
+    double fuseIMUs() {
+        double newFused = 0.0;
+        if (odom.imus.size() >= 3){
+
+        }
+        else if(odom.imus.size() == 2){
+            bool imu1bad = false;
+            bool imu2bad = false;
+            double raw1 = odom.imus[0]->get_rotation();
+            double raw2 = odom.imus[1]->get_rotation();
+            double delta1, delta2;
+            
+            if (std::isnan(raw1) || std::isinf(raw1)) {
+                imuData[0].rejects += 1;
+                imu1bad = true;
+            } else {
+                delta1 = imuData[0].last - raw1;                    
+                imuData[0].last = raw1; 
+            }
+            
+            if (std::isnan(raw2) || std::isinf(raw2)) {
+                imuData[1].rejects += 1;
+                imu2bad = true;
+            } else {
+                delta2 = imuData[1].last - raw2;                    
+                imuData[1].last = raw2; 
+            }
+
+            if(imu1bad && !imu2bad){
+                return delta2;
+            } 
+            else if (imu2bad && !imu1bad){
+                return delta1;
+            }
+            else if (imu1bad && imu2bad){
+                return 0;
+            } else {
+                double avgDelta = (delta1 + delta2) / 2;
+                return avgDelta;
+            }      
+        } 
+        else if (odom.imus.size() == 1){
+            
+        }
+
     }
 
     void odomLoop() {
@@ -953,7 +1055,6 @@ private:
     pros::RecursiveMutex mutex;            
     std::atomic<bool>   motionRunning{false};
     std::atomic<double> progress{0.0};
-    std::atomic<int>    phase{0};
     bool progressPaused = false;
     int  motionDepth = 0;    
 
@@ -961,7 +1062,6 @@ private:
         mutex.take(TIMEOUT_MAX);
         if (motionDepth++ ==0){
             progress = 0.0;
-            phase = 0;
             progressPaused = false;
             cancelRequested = false;
             motionRunning = true;
