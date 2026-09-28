@@ -127,9 +127,11 @@ struct DriveToPoseParams {
 
 //IMU data struct
 struct ImuDataVars {
-    double last;
+    double last = 0.0;
+    double delta = 0.0;
     bool skip = false;
     bool remove = false;
+    bool bad = false;
     int rejects = 0;
 };
 
@@ -775,7 +777,7 @@ public:
     //ODOM VARIABLES:
     double tolerance = 5.0; //Degrees IMU's are allowed to drift before being excluded from averaging
     double fastTolerance = 0.05; //Percent that tolerance scales based on fast turns
-    double maxTurnSpeed = 720.0; //Maximum speed a IMU can measure, if an IMU reads above this it is ignored
+    double maxTurnSpeed = 720.0; //Maximum speed a IMU can measure, if an IMU reads above this it is ignored, in D/s
 
 
 private:
@@ -850,51 +852,57 @@ private:
         return wrapDeg(rad2deg(std::atan2(sumSin, sumCos)));
     }
 
-    double fuseIMUs() {
-        double newFused = 0.0;
-        if (odom.imus.size() >= 3){
-
+    double fuseIMUs(double time = 10.0) {
+        double maxDegMs = maxTurnSpeed / 1000.0 * time;
+        for(int i = 0; i <= odom.imus.size(); i++){
+            imuData[i].skip = false; //Reset so no IMU's are skipped
+        }
+        if (odom.imus.size() == 3){
+            for (int i = 0; i <= 2; i++){
+                double raw = odom.imus[i]->get_rotation();
+                imuData[i].bad = Imubad(raw);
+                if (imuData[i].bad) {imuData[i].skip = true; imuData[i].rejects += 1; }
+                if (!imuData[i].bad) {imuData[i].delta = imuData[i].last - raw; imuData[i].last = raw; }
+                //Skip logic based on max speed (D/s the IMU can read befor being rejected)
+                if(maxDegMs <= imuData[i].delta) {imuData[i].rejects += 1; imuData[i].skip = true; }
+            }
+            for (int n = 0; n <= 2; n++){
+                if (imuData[n].skip || imuData[n].bad) continue;
+                
+            }
+        }
+        else if(odom.imus.size() > 3){
+            
         }
         else if(odom.imus.size() == 2){
-            bool imu1bad = false;
-            bool imu2bad = false;
-            double raw1 = odom.imus[0]->get_rotation();
-            double raw2 = odom.imus[1]->get_rotation();
-            double delta1, delta2;
-            
-            if (std::isnan(raw1) || std::isinf(raw1)) {
-                imuData[0].rejects += 1;
-                imu1bad = true;
-            } else {
-                delta1 = imuData[0].last - raw1;                    
-                imuData[0].last = raw1; 
+            for (int i = 0; i <= 1; i++){
+                double raw = odom.imus[i]->get_rotation();
+                imuData[i].bad = Imubad(raw);
+                if (imuData[i].bad) imuData[i].rejects += 1;
+                if (!imuData[i].bad) {imuData[i].delta = imuData[i].last - raw; imuData[i].last = raw; }
             }
-            
-            if (std::isnan(raw2) || std::isinf(raw2)) {
-                imuData[1].rejects += 1;
-                imu2bad = true;
-            } else {
-                delta2 = imuData[1].last - raw2;                    
-                imuData[1].last = raw2; 
-            }
-
-            if(imu1bad && !imu2bad){
-                return delta2;
-            } 
-            else if (imu2bad && !imu1bad){
-                return delta1;
-            }
-            else if (imu1bad && imu2bad){
-                return 0;
-            } else {
-                double avgDelta = (delta1 + delta2) / 2;
-                return avgDelta;
-            }      
+            if (imuData[0].bad && imuData[1].bad) return 0;
+            if (imuData[0].bad) {lastFused = imuData[1].delta; return lastFused; } //If imu1 is bad we retrun difference in degrees of imu2
+            if (imuData[1].bad) {lastFused = imuData[0].delta; return lastFused; } //If imu2 is bad we return difference in degrees of imu1
+            if (!imuData[0].bad && !imuData[1].bad) {lastFused = (imuData[0].delta + imuData[1].delta)/2; return lastFused; } //Return average difference in degrees
         } 
         else if (odom.imus.size() == 1){
-            
+            double raw = odom.imus[0]->get_rotation();
+            if (Imubad(raw)){
+                return 0; //Return 0 if the IMU reads inf or nan - assuming no heading change
+            } else {
+                double delta = imuData[0].last - raw;
+                imuData[0].last = raw;
+                lastFused = delta;
+                return lastFused; //Return the difference in rotation - DEGREES
+            }
+        } else {
+            return 0; //If 0 imu's or other errors
         }
+    }
 
+    bool Imubad (int value){
+        return std::isnan(value) || std::isinf(value);
     }
 
     void odomLoop() {
