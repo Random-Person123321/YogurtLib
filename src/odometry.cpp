@@ -62,7 +62,7 @@ static double readHeadingDegBest(double currentFilteredDeg) {
   std::vector<bool> bad = {};
   int badCnt = 0;
 
-  for (auto imu : drivetrain.odom.imus) {
+  for (auto* imu : drivetrain.odom.imus.sensors) {
     double raw = imu->get_heading();
     //Convert from "compass" to math unit circle units
     raw = wrapDeg(90 - raw); // Math conversion is: 90 - compassD = mathD

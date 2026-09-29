@@ -2,6 +2,7 @@
 #include "main.h"
 #include <atomic>
 #include <functional>
+#include "yogurtlib/odometry.hpp"
 
 namespace yogurt {
 
@@ -34,7 +35,7 @@ struct OdomSensors {
     double horizontalDiameter = 2.75; // inches
     double horizontalOffset = 0.0;    // inches, forward-of-center is positive
 
-    std::vector<pros::Imu*> imus = {};
+    IMU imus;
 
     pros::Distance* leftD = nullptr;
     pros::Distance* frontD = nullptr;
@@ -48,7 +49,7 @@ struct OdomSensors {
 
     OdomSensors(pros::Rotation* vertical, double verticalDiameter, double verticalOffset,
                 pros::Rotation* horizontal, double horizontalDiameter, double horizontalOffset,
-                std::vector<pros::Imu*> imus, pros::Distance* leftD, pros::Distance* frontD,
+                yogurt::IMU imus, pros::Distance* leftD, pros::Distance* frontD,
                 pros::Distance* rightD, pros::Distance* backD, double leftOffset, double rightOffset,
                 double frontOffset, double backOffset) :
                 vertical(vertical), verticalDiameter(verticalDiameter), verticalOffset(verticalOffset),
@@ -124,18 +125,6 @@ struct DriveToPoseParams {
     double slewRate = -1.0;
     
 };
-
-//IMU data struct
-struct ImuDataVars {
-    double last = 0.0;
-    double delta = 0.0;
-    bool skip = false;
-    bool remove = false;
-    bool bad = false;
-    int rejects = 0;
-};
-
-
 
 // Outcome of a blocking point/turn motion (driveStraight, turnToHeading,
 // turnToPoint, swingToHeading).
@@ -228,7 +217,7 @@ public:
 
     // Blocking IMU reset + starts the odometry task. Call once from initialize().
     void calibrate(Pose startPose = Pose(0, 0, 0)) {
-        for (auto* imu : odom.imus) {
+        for (auto* imu : odom.imus.sensors) {
             imu->reset(false);
             pros::delay(10);
             imu->set_data_rate(5);
@@ -261,7 +250,7 @@ public:
 
         double compassHeading = wrapDeg(90.0 - pose.theta);
         if (compassHeading < 0) compassHeading += 360.0;
-        for (auto* imu : odom.imus) imu->set_heading(compassHeading);
+        for (auto* imu : odom.imus.sensors) imu->set_heading(compassHeading);
 
         if (odom.vertical) lastVertTicks = odom.vertical->get_position();
         if (odom.horizontal) lastHorizTicks = odom.horizontal->get_position();
@@ -289,14 +278,13 @@ public:
         driveSettle.reset();
 
         double startHeading = wrapDeg(pose.theta + params.headingOffset);
-        int dir = copysign(1, distanceInches);
-        double minV = fabs(params.minVolt), maxV = fabs(params.maxVolt);
-
         double targetX = pose.x + distanceInches * std::cos(deg2rad(startHeading));
         double targetY = pose.y + distanceInches * std::sin(deg2rad(startHeading));
-
-        auto [prevL, prevR] = motors.getLastVolt();
         double lastX = pose.x, lastY = pose.y;
+        
+        auto [prevL, prevR] = motors.getLastVolt();
+        double minV = fabs(params.minVolt), maxV = fabs(params.maxVolt);
+        int dir = copysign(1, distanceInches);
 
         MotionResult result = MotionResult::Timeout;
         int elapsed = 0;
@@ -339,7 +327,7 @@ public:
             
             if (std::fabs(distErr) > lateralKsThreshold) driveOut += std::copysign(lateralKs, distErr);
             driveOut = clampd(driveOut, -maxV, maxV);
-            if (minV > 0 && fabs(driveOut) < minV) driveOut = copysign(minV, distErr);
+            if (minV > 0.0 && fabs(driveOut) < minV) driveOut = copysign(minV, distErr);
             
             //Desaturation
             double leftV = driveOut - turnOut;
@@ -378,17 +366,18 @@ public:
         turnPID.reset();
         turnSettle.reset();
         double lastTheta = pose.theta;
-        
-        auto [prevL, prevR] = motors.getLastVolt();
-        double maxV = fabs(params.maxVolt), minV = fabs(params.minVolt);
-        int dir = copysign(1, angleDiffDeg(targetDeg, pose.theta));
-        bool motionChain = false;
-
         MotionResult result = MotionResult::Timeout;
+
+        auto [prevL, prevR] = motors.getLastVolt();
+        double minV = fabs(params.minVolt), maxV = fabs(params.maxVolt);
+        int dir = copysign(1, angleDiffDeg(targetDeg, pose.theta));
+
         int elapsed = 0;
         const int stepMs = 10;
         const double dt = stepMs / 1000.0;
         std::uint32_t prevTime = pros::millis();
+
+        bool motionChain = false;
 
         while (elapsed < timeoutMs) {
             if (cancelRequested.load() || pros::competition::is_disabled()) {
@@ -409,9 +398,6 @@ public:
                     result = MotionResult::Settled;
                     break;
             }
-            // if (std::fabs(err) < 0.5) {err = 0.0;
-                // originally part of update as a deadband
-            // }
 
             double out = turnPID.calculateError(err, dt);
             if (std::fabs(err) > turnKsThreshold) out += std::copysign(turnKs, err);
@@ -468,13 +454,17 @@ public:
         swingPID.reset();
         swingSettle.reset();
 
-        // double maxV = fabs(params.)
+        auto [prevL, prevR] = motors.getLastVolt();
+        double minV = fabs(params.minVolt), maxV = fabs(params.maxVolt);
+        int dir = copysign(1, angleDiffDeg(targetDeg, pose.theta));
         
         MotionResult result = MotionResult::Timeout;
         int time = 0;
         const int stepMs = 10;
         const double dt = stepMs / 1000.0;
         std::uint32_t prevTime = pros::millis();
+
+        bool motionChain = false;
 
         while (time < timeoutMs) {
             if (cancelRequested.load() || pros::competition::is_disabled()) {
@@ -486,18 +476,26 @@ public:
             lastTheta = pose.theta;
 
             double err = angleDiffDeg(targetDeg, pose.theta);
-            if (swingSettle.update(err, dt)) {
+
+            if (chainExit(err, dir, minV, params.earlyExitRange)) {
+                result = MotionResult::Settled;
+                motionChain = true;
+                break;
+            }
+
+            if (minV == 0 && swingSettle.update(err, dt)) {
                 result = MotionResult::Settled;
                 break;
             }
 
+            //FLKJHDSLKFJLJ NOT WORKING
             double out = swingPID.calculateError(err, dt);
             if (std::fabs(err) > swingKsThreshold) out += std::copysign(swingKs, err);
-
-            double v = limitOutput(out, prevV, -params.maxVolt, params.maxVolt, params.slewRate);
-
-            if (leftSidePivot) motors.setVoltage(-v, 0.0);
-            else motors.setVoltage(0.0, v);
+            out = clampd(out, -maxV, maxV);
+            if (minV > 0.0 && fabs(out) < minV) out = copysign(minV, err);
+            double leftV = leftSidePivot ? (-out, prevL, -maxV, maxV, params.slewRate) : (0.0, prevL, -maxV, maxV, params.slewRate);
+            double rightV = leftSidePivot ? limitOutput(0.0, prevR, -maxV, maxV, params.slewRate) : limitOutput(out, prevR, -maxV, maxV, params.slewRate);
+            motors.setVoltage(leftV, rightV);
 
             pros::Task::delay_until(&prevTime, stepMs);
             time += stepMs;
@@ -774,10 +772,6 @@ public:
         while (motionRunning.load() && progress.load() < target);
     }
 
-    //ODOM VARIABLES:
-    double tolerance = 5.0; //Degrees IMU's are allowed to drift before being excluded from averaging
-    double fastTolerance = 0.05; //Percent that tolerance scales based on fast turns
-    double maxTurnSpeed = 720.0; //Maximum speed a IMU can measure, if an IMU reads above this it is ignored, in D/s
 
 
 private:
@@ -795,17 +789,14 @@ private:
     double lastHorizTicks = 0.0;
     double lastHeadingDeg = 0.0;
 
-    double lastFused = 0.0;
-    double totalHeading = 0.0;
-
     bool odomTaskStarted = false;
     std::atomic<bool> cancelRequested{false};
 
-    std::vector <yogurt::ImuDataVars> imuData;
+
 
     // //Asymetrical slew
     double slew(double target, double prev, double maxDelta) const{
-        if (std::signbit(target) != std::signbit(prev)) prev = 0.0; // A change of direction counts as braking
+        if (std::signbit(target) != std::signbit(prev) || target == 0.0) prev = 0.0; // A change of direction counts as braking
         double delta = target - prev; // A slowdown towards zero is free
         if (fabs(target) > fabs(prev) && fabs(delta) > maxDelta) {
             // Limit acceleration toward the target without overshooting it
@@ -840,7 +831,7 @@ private:
     double readHeadingDeg() const {
         double sumSin = 0.0, sumCos = 0.0;
         int n = 0;
-        for (auto* imu : odom.imus) {
+        for (auto* imu : odom.imus.sensors) {
             double raw = imu->get_heading();
             if (std::isnan(raw) || std::isinf(raw)) continue;
             double mathDeg = wrapDeg(90.0 - raw);
@@ -852,58 +843,6 @@ private:
         return wrapDeg(rad2deg(std::atan2(sumSin, sumCos)));
     }
 
-    double fuseIMUs(double time = 10.0) {
-        double maxDegMs = maxTurnSpeed / 1000.0 * time;
-        for(int i = 0; i <= odom.imus.size(); i++){
-            imuData[i].skip = false; //Reset so no IMU's are skipped
-        }
-        if (odom.imus.size() == 3){
-            for (int i = 0; i <= 2; i++){
-                double raw = odom.imus[i]->get_rotation();
-                imuData[i].bad = Imubad(raw);
-                if (imuData[i].bad) {imuData[i].skip = true; imuData[i].rejects += 1; }
-                if (!imuData[i].bad) {imuData[i].delta = imuData[i].last - raw; imuData[i].last = raw; }
-                //Skip logic based on max speed (D/s the IMU can read befor being rejected)
-                if(maxDegMs <= imuData[i].delta) {imuData[i].rejects += 1; imuData[i].skip = true; }
-            }
-            for (int n = 0; n <= 2; n++){
-                if (imuData[n].skip || imuData[n].bad) continue;
-                
-            }
-        }
-        else if(odom.imus.size() > 3){
-            
-        }
-        else if(odom.imus.size() == 2){
-            for (int i = 0; i <= 1; i++){
-                double raw = odom.imus[i]->get_rotation();
-                imuData[i].bad = Imubad(raw);
-                if (imuData[i].bad) imuData[i].rejects += 1;
-                if (!imuData[i].bad) {imuData[i].delta = imuData[i].last - raw; imuData[i].last = raw; }
-            }
-            if (imuData[0].bad && imuData[1].bad) return 0;
-            if (imuData[0].bad) {lastFused = imuData[1].delta; return lastFused; } //If imu1 is bad we retrun difference in degrees of imu2
-            if (imuData[1].bad) {lastFused = imuData[0].delta; return lastFused; } //If imu2 is bad we return difference in degrees of imu1
-            if (!imuData[0].bad && !imuData[1].bad) {lastFused = (imuData[0].delta + imuData[1].delta)/2; return lastFused; } //Return average difference in degrees
-        } 
-        else if (odom.imus.size() == 1){
-            double raw = odom.imus[0]->get_rotation();
-            if (Imubad(raw)){
-                return 0; //Return 0 if the IMU reads inf or nan - assuming no heading change
-            } else {
-                double delta = imuData[0].last - raw;
-                imuData[0].last = raw;
-                lastFused = delta;
-                return lastFused; //Return the difference in rotation - DEGREES
-            }
-        } else {
-            return 0; //If 0 imu's or other errors
-        }
-    }
-
-    bool Imubad (int value){
-        return std::isnan(value) || std::isinf(value);
-    }
 
     void odomLoop() {
         const int stepMs = 10;
@@ -923,7 +862,7 @@ private:
         if (std::isnan(vNow) || std::isinf(vNow)) vNow = lastVertTicks;
         if (std::isnan(hNow) || std::isinf(hNow)) hNow = lastHorizTicks;
 
-        double headDeg = odom.imus.empty() ? pose.theta : readHeadingDeg();
+        double headDeg = odom.imus.sensors.empty() ? pose.theta : readHeadingDeg();
         double dThetaDeg = angleDiffDeg(headDeg, lastHeadingDeg);
         double dTheta = deg2rad(dThetaDeg);
 

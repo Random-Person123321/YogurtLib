@@ -46,7 +46,8 @@ pros::Imu imu2(2);
 pros::Imu imu3(3);
 std::vector<pros::v5::Imu *> imus = {&imu1, &imu2, &imu3};
 
-yogurt::OdomSensors odometry(nullptr, 1.0, 0.0, nullptr, 1.0, 0.0, imus, nullptr, nullptr, nullptr, nullptr, 0.0, 0.0, 0.0, 0.0);
+yogurt::IMU hi32r2(imus);//old imus
+yogurt::OdomSensors odometry(nullptr, 1.0, 0.0, nullptr, 1.0, 0.0, hi32r2, nullptr, nullptr, nullptr, nullptr, 0.0, 0.0, 0.0, 0.0);
 yogurt::ControllerSettings hi2(1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 3);
 // Drivetrain(DriveMotors motors, OdomSensors odomSensors,
 //            ControllerSettings driveSettings, ControllerSettings turnSettings, ControllerSettings swingSettings)

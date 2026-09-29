@@ -140,6 +140,7 @@ extern std::vector<particle_data> particles;
 #include "yogurtlib/dt/dt.hpp"
 #include "yogurtlib/UI.hpp"
 #include "yogurtlib/global.hpp"
+#include "yogurtlib/odometry.hpp"
 
 #include "odometry.h"
 
