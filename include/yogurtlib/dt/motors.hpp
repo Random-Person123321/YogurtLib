@@ -33,9 +33,9 @@ public:
     pros::MotorGroup* right;
 
     DriveMotors(pros::MotorGroup* left, pros::MotorGroup* right,
-                double trackWidth, double wheelDiameter)
+                double wheelDiameter)
         : left(left), right(right),
-          trackWidth(trackWidth), wheelDiameter(wheelDiameter) {}
+          wheelDiameter(wheelDiameter) {}
 
     // Direct motor voltage, in mV [-12000, 12000].
     void setVoltage(double leftMv, double rightMv) const {
@@ -69,11 +69,9 @@ public:
     }
 
     std::pair<double, double> getLastVolt() const {return std::make_pair(lastL, lastR); }
-    double getTrackWidth() const { return trackWidth; }
     double getWheelDiameter() const { return wheelDiameter; }
 
 private:
-    double trackWidth;      // inches, center-to-center of left/right wheels
     double wheelDiameter;   // inches
     mutable double lastL = 0.0, lastR = 0.0; //Records last voltage for both sides
 };

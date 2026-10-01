@@ -126,6 +126,13 @@ struct DriveToPoseParams {
     
 };
 
+struct FollowParams {
+    double minVolt = 0.0;
+    double earlyExitRange = 0.0;
+    bool reversed = false;
+    double slewRate = -1.0;
+};
+
 // Outcome of a blocking point/turn motion (driveStraight, turnToHeading,
 // turnToPoint, swingToHeading).
 enum class MotionResult {
@@ -501,7 +508,7 @@ public:
             time += stepMs;
         }
 
-        motors.stop(BrakeMode::Brake);
+        if(motionChain) motors.stop(BrakeMode::Brake);
         endMotion();
         return result;
     }
@@ -549,6 +556,7 @@ public:
         endMotion();
         return FollowResult::ReachedEnd;
     }
+
 
     // Drives to (x, y) then turns to face `headingDeg`.
     FollowResult driveToPose(double x, double y, double headingDeg,
@@ -704,6 +712,14 @@ public:
 
         motors.stop(BrakeMode::Brake);
         return result;
+    }
+
+    FollowResult curve(const std::vector<std::pair<double, double>>& path,
+                        bool async = false){
+        requestMotion();
+        
+        
+        endMotion();
     }
  
     void tuneOffset() {
