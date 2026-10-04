@@ -1023,7 +1023,7 @@ private:
 
     void requestMotion() {
         mutex.take(TIMEOUT_MAX);
-        if (motionDepth++ ==0){
+        if (motionDepth++ == 0){
             progress = 0.0;
             progressPaused = false;
             cancelRequested = false;

@@ -38,12 +38,12 @@
 // #include "lv_global.h"
 #define M_PI 3.14159265358979323846
 
-//Constants for Tuning (Per robot, dont assume)
-const double VERT_DIAMETER = 2.75;
-const double HORIZ_DIAMETER = 0.0; //Set to 0 if not using
-const double TRACK_WIDTH = 10.5; //Measure
-const double HORIZ_FWD_OFFSET = 0.0; //Forward = positive, set to 0 if not using
-const double VERT_RIGHT_OFFSET = 0.38; //Right = positive
+// //Constants for Tuning (Per robot, dont assume)
+// const double VERT_DIAMETER = 2.75;
+// const double HORIZ_DIAMETER = 0.0; //Set to 0 if not using
+// const double TRACK_WIDTH = 10.5; //Measure
+// const double HORIZ_FWD_OFFSET = 0.0; //Forward = positive, set to 0 if not using
+// const double VERT_RIGHT_OFFSET = 0.38; //Right = positive
 
 // const double LOOKAHEAD = 12.0;
 
