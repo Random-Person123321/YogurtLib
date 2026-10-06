@@ -500,7 +500,7 @@ public:
             if (std::fabs(err) > swingKsThreshold) out += std::copysign(swingKs, err);
             out = clampd(out, -maxV, maxV);
             if (minV > 0.0 && fabs(out) < minV) out = copysign(minV, err);
-            double leftV = leftSidePivot ? (-out, prevL, -maxV, maxV, params.slewRate) : (0.0, prevL, -maxV, maxV, params.slewRate);
+            double leftV = leftSidePivot ? limitOutput(-out, prevL, -maxV, maxV, params.slewRate) : limitOutput(0.0, prevL, -maxV, maxV, params.slewRate);
             double rightV = leftSidePivot ? limitOutput(0.0, prevR, -maxV, maxV, params.slewRate) : limitOutput(out, prevR, -maxV, maxV, params.slewRate);
             motors.setVoltage(leftV, rightV);
 

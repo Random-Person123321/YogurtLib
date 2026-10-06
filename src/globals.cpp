@@ -40,7 +40,7 @@ bool UseTime = false;
 yogurt::UI uiobject;
 
 //Temporary
-yogurt::DriveMotors hi(nullptr, nullptr, 15, 3.2);
+yogurt::DriveMotors hi(nullptr, nullptr, 3.2);
 pros::Imu imu1(1);
 pros::Imu imu2(2);
 pros::Imu imu3(3);
