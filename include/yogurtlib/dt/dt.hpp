@@ -410,7 +410,7 @@ public:
             if (std::fabs(err) > turnKsThreshold) out += std::copysign(turnKs, err);
             out = clampd(out, -maxV, maxV);
             if (minV > 0.0 && fabs(out) < minV) out = copysign(minV, err);
-            double leftV = limitOutput(out, prevL, -maxV, maxV, params.slewRate);
+            double leftV = limitOutput(-out, prevL, -maxV, maxV, params.slewRate);
             double rightV = limitOutput(out, prevR, -maxV, maxV, params.slewRate);
             motors.setVoltage(leftV, rightV);
             
@@ -685,7 +685,7 @@ public:
             double L = std::hypot(xR, yR);
             double denom = hasLook ? (Ld * Ld) : std::max(1.0, (L * L));
             double curvature = (2.0 * yR) / denom;
-            double kRaw = curvature * (motors.getTrackWidth() / 2.0);
+            double kRaw = /*curvature * (motors.getTrackWidth() / 2.0);*/ 10;
             double k = clampd(kRaw, -pursuit.curvClampK, pursuit.curvClampK);
 
             double base = maxVolt;
@@ -714,13 +714,13 @@ public:
         return result;
     }
 
-    FollowResult curve(const std::vector<std::pair<double, double>>& path,
-                        bool async = false){
-        requestMotion();
+    // FollowResult curve(const std::vector<std::pair<double, double>>& path,
+    //                     bool async = false){
+    //     requestMotion();
         
         
-        endMotion();
-    }
+    //     endMotion();
+    // }
  
     void tuneOffset() {
         requestMotion();
@@ -1022,6 +1022,7 @@ private:
     int  motionDepth = 0;    
 
     void requestMotion() {
+        std::cout << "Motion Requested\n";
         mutex.take(TIMEOUT_MAX);
         if (motionDepth++ == 0){
             progress = 0.0;
@@ -1032,6 +1033,7 @@ private:
     }
     
     void endMotion(){
+        std::cout << "Motion Ending\n";
        if(--motionDepth == 0) motionRunning = false;
        mutex.give();
     }
