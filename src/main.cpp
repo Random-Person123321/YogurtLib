@@ -1,4 +1,6 @@
 #include "main.h"
+#include "yogurtlib/api.hpp"
+#include "yogurtlib/global.hpp"
 
 /*
 All electronic declarations
@@ -26,9 +28,9 @@ void initialize() { //INIT SHOULD GO HERE!
     //Start tasks, such as odom and intake stopping
     // start_tasks();
     //Calls auton distance relocalizations
-    classInit();
+    // classInit();
+    double m = M_PI;
 }
-
 
 /**
  * Runs while the robot is in the disabled state of Field Management System or
@@ -62,9 +64,11 @@ void competition_initialize() {}
  * from where it left off.
  */
 void autonomous() {
-    startTime = pros::millis();
-    std::cout << "Autonomous Started!\n";
-
+    drivetrain.setHeadingCorrectionGains(270.0, 0.0, 3.0, 2.0);
+    // startTime = pros::millis();
+    // std::cout << "Autonomous Started!\n";
+    
+    // drivetrain.swingToHeading(90.0, 1000);
 }
 
 /**

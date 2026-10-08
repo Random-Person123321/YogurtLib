@@ -1,4 +1,3 @@
-#include "main.h"
 #include "yogurtlib/UI.hpp"
 
 yogurt::Drivetrain* yogurt::UI::drivetrainRef = nullptr;

@@ -1,8 +1,9 @@
 #pragma once
 #include <vector>
 #include "liblvgl/lvgl.h"
-// #include "pros/apix.h" For now
 #include "liblvgl/lv_api_map_v8.h"
+#include "yogurtlib/dt/dt.hpp"
+#include "yogurtlib/pose.hpp"
 
 namespace yogurt {class Drivetrain;} // Declaration, definition in dt.hpp
 
@@ -14,12 +15,12 @@ struct AutoSelection{
     bool selected = false;
 };
 
-enum ErrorType {
-    IMUDRIFT,
-    MCLLOST,
-    MCLDEAD,
-    MOTORHOT,
-};
+// enum ErrorType {
+//     IMUDRIFT,
+//     MCLLOST,
+//     MCLDEAD,
+//     MOTORHOT,
+// };
 
 class UI {
 

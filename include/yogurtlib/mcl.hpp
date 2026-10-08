@@ -1,8 +1,7 @@
-#ifndef MCL_H_
-#define MCL_H_
+#pragma once
 
 // namespace pros { class Distance; }
-#include "api.h"
+#include "main.h"
 
 void update_Particle_Num();
 
@@ -17,6 +16,3 @@ void weigh_Particles();
 void calc_Pose();
 
 void calc_Likelyhood();
-
-
-#endif

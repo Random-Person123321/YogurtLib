@@ -35,72 +35,6 @@
 #define PROS_USE_LITERALS
 
 #include "api.h"
-// #include "lv_global.h"
-#define M_PI 3.14159265358979323846
-
-// //Constants for Tuning (Per robot, dont assume)
-// const double VERT_DIAMETER = 2.75;
-// const double HORIZ_DIAMETER = 0.0; //Set to 0 if not using
-// const double TRACK_WIDTH = 10.5; //Measure
-// const double HORIZ_FWD_OFFSET = 0.0; //Forward = positive, set to 0 if not using
-// const double VERT_RIGHT_OFFSET = 0.38; //Right = positive
-
-// const double LOOKAHEAD = 12.0;
-
-
-enum struct PursuitDir {
-  Forward,
-  Reverse, 
-  Auto
-};
-
-enum struct FollowResult {
-  ReachedEnd,
-  Timeout,
-  NoIntersection_TargetBehind,
-  Stuck,
-  PathTooShort,
-  Cancelled, 
-  Running
-};
-
-// ---- Angle helpers (degrees) ----
-inline double wrapDeg(double a) {
-  while (a > 180.0) a -= 360.0;
-  while (a <= -180.0) a += 360.0;
-  return a;
-}
-
-// returns shortest signed difference target - current in degrees
-inline double angleDiffDeg(double targetDeg, double currentDeg) {
-  return wrapDeg(targetDeg - currentDeg);
-}
-
-inline double deg2rad(double d) { return d * M_PI / 180.0; }
-inline double rad2deg(double r) { return r * 180.0 / M_PI; }
-
-inline double wrapRad(double a) {
-  while (a >  M_PI) a -= 2.0 * M_PI;
-  while (a <= -M_PI) a += 2.0 * M_PI;
-  return a;
-}
-
-// Convert PROS get_heading() [0,360] to signed [-180,180]
-inline double headingToSignedDeg(double h) {
-  if (h > 180.0) h -= 360.0;
-  return wrapDeg(h);
-}
-
-inline double clampd(double v, double lo, double hi) {
-  return std::max(lo, std::min(hi, v));
-}
-
-inline double batteryScale() {
-  // Scale outputs so behavior stays similar as battery sags
-  int mv = pros::battery::get_voltage();      // typically up to ~12000
-  if (mv < 9000) mv = 9000;                  // avoid extreme scaling
-  return 12000.0 / (double)mv;
-}
 
 // struct RobotPose { double x = 0.0, y = 0.0, heading = 0.0; };
 // extern RobotPose pose;
@@ -114,35 +48,13 @@ extern bool Parked;
 extern int startTime;
 extern int timeUsed;
 extern bool UseTime;
-// extern int particle_Num;
 
-
-
-struct particle_data {
-	double x, y, h, weight;
-};
-
-extern std::vector<particle_data> particles;
 
 /**
  * You should add more #includes here
  */
 //#include "okapi/api.hpp"
 
-#include <algorithm>
-#include <cmath>
-#include <vector>
-#include "mcl.h"
-#include "main.h"
-#include "yogurtlib/control.hpp"
-#include "yogurtlib/pose.hpp"
-#include "yogurtlib/dt/motors.hpp"
-#include "yogurtlib/dt/dt.hpp"
-#include "yogurtlib/UI.hpp"
-#include "yogurtlib/global.hpp"
-#include "yogurtlib/odometry.hpp"
-
-#include "odometry.h"
 
 /**
  * If you find doing pros::Motor() to be tedious and you'd prefer just to do

@@ -3,6 +3,10 @@
 #include <atomic>
 #include <functional>
 #include "yogurtlib/odometry.hpp"
+#include "yogurtlib/dt/motors.hpp"
+#include "yogurtlib/control.hpp"
+#include "yogurtlib/pose.hpp"
+#include "yogurtlib/pursuit.hpp"
 
 namespace yogurt {
 
@@ -445,7 +449,9 @@ public:
     // Pivots about one side only (the other side stays stopped) to face `targetDeg`.
     MotionResult swingToHeading(double targetDeg, int timeoutMs,
                                 bool leftSidePivot = true, SwingToHeadingParams params = {}, bool async = false) {
+        std::cout << "before\n";
         requestMotion();
+        std::cout << "after";
         if (async) {
             pros::Task task([this, targetDeg, timeoutMs, leftSidePivot, params]() { swingToHeading(targetDeg, timeoutMs, leftSidePivot, params, false);});
             endMotion();
@@ -472,7 +478,7 @@ public:
         std::uint32_t prevTime = pros::millis();
 
         bool motionChain = false;
-
+        std::cout << "before loop";
         while (time < timeoutMs) {
             if (cancelRequested.load() || pros::competition::is_disabled()) {
                 result = MotionResult::Cancelled;
@@ -508,7 +514,7 @@ public:
             time += stepMs;
         }
 
-        if(motionChain) motors.stop(BrakeMode::Brake);
+        if(!motionChain) motors.stop(BrakeMode::Brake);
         endMotion();
         return result;
     }
@@ -1024,10 +1030,11 @@ private:
     void requestMotion() {
         std::cout << "Motion Requested\n";
         mutex.take(TIMEOUT_MAX);
+        std::cout << "Motion Requested2\n";
         if (motionDepth++ == 0){
             progress = 0.0;
             progressPaused = false;
-            cancelRequested = false;
+            cancelRequested.store(false);
             motionRunning = true;
         }
     }

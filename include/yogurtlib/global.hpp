@@ -1,4 +1,5 @@
 #pragma once
+#include "yogurtlib/dt/dt.hpp"
 
 extern yogurt::Drivetrain drivetrain;
 

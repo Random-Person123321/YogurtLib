@@ -1,6 +1,7 @@
 #pragma once
-#include "main.h"
-
+#include <vector>
+#include <algorithm>
+#include "yogurtlib/pose.hpp"
 namespace yogurt{
 
 
@@ -196,14 +197,14 @@ private:
         return curv;
     }
 
-// closestIdx is coarse: points are 2–6" apart, so the robot is usually between points. Get the exact distance by projecting the robot onto the segment from point 
-//A = closestIdx − 1 to point B = closestIdx + 1, clamped to the ends of the path:
-//     u = (B − A) / |B − A|                         // unit direction along the path
-// along = (robot − A) · u                       // how far past A the robot is
-// along = clamp(along, 0, B.s − A.s)
-// sRobot = A.s + along
-//· is the dot product: x*x' + y*y'. It measures how far the robot is along that direction. 
-//Save sRobot in a member variable (e.g. progressS), because waitUntil() and stuck detection will use it later.
+    // closestIdx is coarse: points are 2–6" apart, so the robot is usually between points. Get the exact distance by projecting the robot onto the segment from point 
+    // A = closestIdx − 1 to point B = closestIdx + 1, clamped to the ends of the path:
+    // u = (B − A) / |B − A|                         // unit direction along the path
+    // along = (robot − A) · u                       // how far past A the robot is
+    // along = clamp(along, 0, B.s − A.s)
+    // sRobot = A.s + along
+    // · is the dot product: x*x' + y*y'. It measures how far the robot is along that direction. 
+    // Save sRobot in a member variable (e.g. progressS), because waitUntil() and stuck detection will use it later.
     std::pair<double, double> targetSpeed(Pose& pose, double minSpeed, double maxSpeed, double decelDist, double slewRate, bool reversed) {
         double dx = path[closestIdx + 1].x - path[closestIdx - 1].x;
         double ux = dx / std::fabs(dx);

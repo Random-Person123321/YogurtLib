@@ -1,4 +1,3 @@
-#include "main.h"
 #include "yogurtlib/global.hpp"
 
 // TODO-PORT: exactly what OdomSensors.imus / OdomSensors.vertical /
@@ -39,23 +38,33 @@ bool UseTime = false;
 //UI & MCL is optional code the user can choose to include
 yogurt::UI uiobject;
 
+pros::MotorGroup r_motors ({-18, 17});
+pros::MotorGroup l_motors ({-19, 20});
+
 //Temporary
-yogurt::DriveMotors hi(nullptr, nullptr, 3.2);
+yogurt::DriveMotors dm(&l_motors, &r_motors, 2.75);
 pros::Imu imu1(1);
 pros::Imu imu2(2);
 pros::Imu imu3(3);
 std::vector<pros::v5::Imu *> imus = {&imu1, &imu2, &imu3};
 
-yogurt::IMU hi32r2(imus);//old imus
-yogurt::OdomSensors odometry(nullptr, 1.0, 0.0, nullptr, 1.0, 0.0, hi32r2, nullptr, nullptr, nullptr, nullptr, 0.0, 0.0, 0.0, 0.0);
-yogurt::ControllerSettings hi2(1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 3);
-// Drivetrain(DriveMotors motors, OdomSensors odomSensors,
-//            ControllerSettings driveSettings, ControllerSettings turnSettings, ControllerSettings swingSettings)
-// angularSettings/pursuit/maxVoltage/defaultSlew are no longer constructor args —
-// set drivetrain.pursuit / .maxVoltage / .defaultSlew / call setHeadingCorrectionGains() after.
-yogurt::Drivetrain drivetrain(hi, odometry, hi2, hi2, hi2);
+pros::Rotation vert(4);
+pros::Rotation horz(5);
 
+yogurt::OdomSensors odometry(&vert, 2.071, 0.256, &horz, 1.99, -2.718, imus, nullptr, nullptr, nullptr, nullptr, 0.0, 0.0, 0.0, 0.0);
+yogurt::ControllerSettings forwards(600.0, 0.0, 0.0, 3.0, 0.1, 0.5, 1000);
+yogurt::ControllerSettings forwardshead(300.0, 0.0, 5.0, 2.0, 0.5, 1.0, 250);
+yogurt::ControllerSettings turning(120.0, 0.0, 15.35, 2.0, 0.75, 8.0, 200);
+yogurt::ControllerSettings swings(250.0, 0.0, 0.0, 3.0, 0.75, 8.0, 200);
+yogurt::PursuitProfile hello3{.curvSlowK = 1.75};
+// DriveMotors motors, OdomSensors odomSensors,
+            //    ControllerSettings driveSettings, ControllerSettings angularSettings, //Lateral for driveStraight, Angular for heading correction,
+            //    ControllerSettings turnSettings, ControllerSettings swingSettings, // turn for turn, swing for swing motion
+            //    PursuitProfile pursuit, double maxVoltage = 12000.0, double defaultSlew = 800.0
+// yogurt::Drivetrain drivetrain(dm, odometry, forwards, forwardshead, turning, swings, hello3, 12000.0, 800.0);
+yogurt::Drivetrain drivetrain(dm, odometry, forwards, turning, swings);
 
+yogurt::UI task;
 //Temporary Belongs in main.cpp if not for the precompiled binary
 
 void classInit() {
