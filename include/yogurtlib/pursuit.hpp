@@ -205,11 +205,14 @@ private:
     // sRobot = A.s + along
     // · is the dot product: x*x' + y*y'. It measures how far the robot is along that direction. 
     // Save sRobot in a member variable (e.g. progressS), because waitUntil() and stuck detection will use it later.
-    std::pair<double, double> targetSpeed(Pose& pose, double minSpeed, double maxSpeed, double decelDist, double slewRate, bool reversed) {
-        double dx = path[closestIdx + 1].x - path[closestIdx - 1].x;
-        double ux = dx / std::fabs(dx);
-        double dy = path[closestIdx + 1].y - path[closestIdx - 1].y;
-        double uy = dy / std::fabs(dy);
+    double targetSpeed(Pose& pose, double minSpeed, double maxSpeed, double decelDist, double slewRate, bool reversed) {
+        int A = closestIdx > 0 ? closestIdx - 1 : 0;
+        int B = std::min((int)closestIdx + 1, path.size() - 1);
+        double dx = path[A].x - path[B].x;
+        double dy = path[A].y - path[A].y;
+        double len = std::hypot(dx, dy);
+        double ux = dx / len;
+        double uy = dy / len;
         
         double rx = pose.x - path[closestIdx - 1].x;
         double ry = pose.y - path[closestIdx - 1].y;
@@ -221,16 +224,17 @@ private:
         progressS = sRobot;
 
         double planned = 0.0;
-        for(int i = 0; i < path.size() - 1; i++){
+        for(int i = A; i < path.size() - 1; i++){
             if(path[i].s < sRobot && path[i + 1].s < sRobot) continue;
 
-            if (i == path.size() - 1) {
-                planned = path[i].vel;
+            if (i == path.size() - 2 || i == path.size() - 1) { //Second last  to last point
+                planned = path[path.size() - 2].vel;
                 break;
             }
+
             double dVel = path[i + 1].vel - path[i].vel;
             double d = path[i + 1].s - path[i].s;
-            planned = (dVel / d) * (sRobot - path[i].s);
+            planned = path[i].vel + (dVel / d) * (sRobot - path[i].s);
             break;
         }
 
@@ -239,19 +243,32 @@ private:
         double target = std::min(planned, endCap);
         if (minSpeed > 0 && target < minSpeed) target = minSpeed;
         double maxStep = slewRate / 12000.0 * 127.0;
-        if (target > prevVel) {
-            target = std::min(target, prevVel + maxStep); // STILL NEED TO UPDATE PREVVEL
-        }
+        target = slew(target, prevVel, maxStep);
+        prevVel = target;
+        return target;
+        
+    }
+
+    void wheelSpeeds(Pose& p, double target, bool reversed, double maxSpeed) { // This might just need to call targ instead of passing in
+        double curv = arcCurv(p, reversed);
         //Differential Drive
-        double left = target * (1 - arcCurv(pose, reversed) * path.getTrackWidth()/2);
-        double right = target * (1 + arcCurv(pose, reversed) * path.getTrackWidth()/2);
+        double left = target * (1 - curv) * path.getTrackWidth()/2;
+        double right = target * (1 + curv) * path.getTrackWidth()/2;
         if (reversed) {
             double temp = left;
             left = -right; right = -temp;
         }
-        double m = std::max(left, right);
-        left *= maxSpeed / m; right *= maxSpeed / m;
+        double m = std::max(std::fabs(left), std::fabs(right));
+        if (m > maxSpeed) {left *= maxSpeed / m; right *= maxSpeed / m; }
+        
     }
+
+    // bool isDone(const Pose& p, double endTolerance){
+    //     int A = path.size() - 1;
+    //     if () {
+            
+    //     }
+    // }
 
 public:
     PurePursuit(const Path& path) : path(path) {}
