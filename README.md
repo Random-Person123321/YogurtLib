@@ -21,7 +21,7 @@
 
 ## Quick start
 
-You'll need the [PROS CLI](https://pros.cs.purdue.edu/v5/getting-started/index.html) and an existing PROS 4 project. Download `yogurtlib@1.0.0.zip` from the [newest release](https://github.com/Random-Person123321/YogurtLib/releases/tag/YogurtLib_UI_%26_OOP), then run these from your project folder:
+You'll need the [PROS CLI](https://pros.cs.purdue.edu/v5/getting-started/index.html) and an existing PROS 4 project. Download `yogurtlib@1.0.0.zip` from the [newest release](https://github.com/Random-Person123321/YogurtLib/releases/tag/YogurtLib_UI_%26_OOP) (and make sure it's in the root fo your PROS project folder ie. drag it into the folder of your project name), then run these from your project folder:
 
 ```bash
 pros c fetch yogurtlib@1.0.0.zip
