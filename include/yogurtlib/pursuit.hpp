@@ -4,7 +4,6 @@
 #include "yogurtlib/pose.hpp"
 namespace yogurt{
 
-
 struct PathPoint {
     double x = 0.0, y = 0.0;
     double s = 0.0; // How many inches along the path the robot is
@@ -16,6 +15,18 @@ struct PathConfig {
     double decelDist = 24.0; //Inches that allows the robot to slow from full speed to 0. Smaller number means braking later
     double slew = 600.0; //mV per loop. How much to speed up while accelerating to reduce wheel slip
     double turnK = 5.0; //speed(0-127) per inch of turn radius. How much to slow down by during tight curves/turns
+};
+
+struct WheelTargets {
+    double leftVel = 0.0, rightVel = 0.0;
+    double leftAccel = 0.0, rightAccel = 0.0;
+};
+
+struct VoltageTerms {
+    double kV = 95.0;
+    double kA = 0.0;
+    double kS = 0.0; //Tune
+    double kP = 0.0; //Tune
 };
 
 inline double slew(double target, double prev, double maxDelta) {
@@ -121,6 +132,7 @@ private:
     double lastLookFrac = 0.0;
     double lookX = 0.0, lookY = 0.0;
     double prevVel = 0.0;
+    double prevL = 0.0, prevR = 0.0;
     double progressS = 0.0;
 
     /*
@@ -205,22 +217,22 @@ private:
     // sRobot = A.s + along
     // · is the dot product: x*x' + y*y'. It measures how far the robot is along that direction. 
     // Save sRobot in a member variable (e.g. progressS), because waitUntil() and stuck detection will use it later.
-    double targetSpeed(Pose& pose, double minSpeed, double maxSpeed, double decelDist, double slewRate, bool reversed) {
+    double targetSpeed(Pose& pose, double minSpeed) {
         int A = closestIdx > 0 ? closestIdx - 1 : 0;
         int B = std::min((int)closestIdx + 1, path.size() - 1);
-        double dx = path[A].x - path[B].x;
-        double dy = path[A].y - path[A].y;
+        double dx = path[B].x - path[A].x;
+        double dy = path[B].y - path[A].y;
         double len = std::hypot(dx, dy);
         double ux = dx / len;
         double uy = dy / len;
         
-        double rx = pose.x - path[closestIdx - 1].x;
-        double ry = pose.y - path[closestIdx - 1].y;
+        double rx = pose.x - path[A].x;
+        double ry = pose.y - path[A].y;
         
 
         double along = ux * rx + uy * ry;
-        along = std::clamp(along, 0.0, path[closestIdx + 1].s - path[closestIdx - 1].s);
-        double sRobot = path[closestIdx - 1].s + along;
+        along = std::clamp(along, 0.0, path[B].s - path[A].s);
+        double sRobot = path[A].s + along;
         progressS = sRobot;
 
         double planned = 0.0;
@@ -239,36 +251,44 @@ private:
         }
 
         double remaining = path.length() - sRobot;
-        double endCap = 127 * std::sqrt(remaining / decelDist);
+        double endCap = 127 * std::sqrt(remaining / path.config().decelDist);
         double target = std::min(planned, endCap);
         if (minSpeed > 0 && target < minSpeed) target = minSpeed;
-        double maxStep = slewRate / 12000.0 * 127.0;
+        double maxStep = path.config().slew / 12000.0 * 127.0;
         target = slew(target, prevVel, maxStep);
         prevVel = target;
         return target;
         
     }
 
-    void wheelSpeeds(Pose& p, double target, bool reversed, double maxSpeed) { // This might just need to call targ instead of passing in
-        double curv = arcCurv(p, reversed);
+    WheelTargets wheelSpeeds(double target, double curv, bool reversed, double dt) { // This might just need to call targ instead of passing in
         //Differential Drive
-        double left = target * (1 - curv) * path.getTrackWidth()/2;
-        double right = target * (1 + curv) * path.getTrackWidth()/2;
+        double left = target * (1 - curv * path.getTrackWidth()/2);
+        double right = target * (1 + curv * path.getTrackWidth()/2);
         if (reversed) {
             double temp = left;
             left = -right; right = -temp;
         }
         double m = std::max(std::fabs(left), std::fabs(right));
+        double maxSpeed = path.config().maxSpeed;
         if (m > maxSpeed) {left *= maxSpeed / m; right *= maxSpeed / m; }
-        
+        WheelTargets out = {.leftVel = left, .rightVel = right};
+        out.leftAccel = (left - prevL) / dt; out.rightAccel = (right - prevR) / dt;
+        prevL = left; prevR = right;
+
+        return out;
     }
 
-    // bool isDone(const Pose& p, double endTolerance){
-    //     int A = path.size() - 1;
-    //     if () {
-            
-    //     }
-    // }
+    bool isDone(const Pose& pose, double endTolerance, double lookaheadDist) const {
+        if (progressS <= std::max(path.length() - lookaheadDist, 0.0)) return false; //Check if we are even nearing done - should fix loopy paths
+        int n = path.size();
+        double dx = path[n - 1].x - path[n - 2].x, dy = path[n - 1].y - path[n - 2].y;
+        double len = std::hypot(dx, dy), ux = dx / len, uy = dy / len;
+        double along = (pose.x - path[n - 1].x) * ux + (pose.y - path[n - 1].y) * uy;
+        // Along would be negative if we are still before the end where as it would be positive after we passed it
+        return along >= -endTolerance; //Return if we are past the end
+    }
+
 
 public:
     PurePursuit(const Path& path) : path(path) {}
@@ -293,7 +313,18 @@ public:
     
     size_t closest() const {return closestIdx; }
     
-
+    void step(Pose& p, double lookaheadDist, bool reversed, double minSpeed, double slewRate, double endTolerance, double dt) {
+        updateClosest(pose.x, pose.y);
+        findLookahead(pose.x, pose.y, lookaheadDist);
+        double curv = arcCurv(p, reversed);
+        double target = targetSpeed(p, minSpeed, slewRate);
+        double wheels = wheelSpeeds(target, curv, reveresed, dt);
+        bool done = isDone(p, endTolerance, lookaheadDist);
+        double dx = p.x - path[closestIdx].x;
+        double dy = p.y - path[closestIdx].y;
+        double distToPath = std::hypot(dx, dy);
+    }
 };
+
 
 } //namespace yogurt

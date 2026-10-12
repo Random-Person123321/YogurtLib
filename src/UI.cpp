@@ -36,19 +36,9 @@ lv_obj_t* yogurt::UI::last_btn = nullptr;
 lv_obj_t* yogurt::UI::select_btn = nullptr;
 lv_obj_t* yogurt::UI::auton_name = nullptr;
 
-// lv_obj_t* yogurt::UI::error_data_btn = nullptr;
-// lv_obj_t* yogurt::UI::error_lbl = nullptr;
-
 std::vector<yogurt::AutoSelection> yogurt::UI::auton_list = {};
 int yogurt::UI::selected_auto = 0;
 int yogurt::UI::current_auto = 0;
-// std::vector<std::string> yogurt::UI::error_messages = {
-//     "CRITICAL ERROR: MINIMUM 1 IMU DRIFTING",
-//     "ERROR: MONTE CARLO LOCALIZATION LOST, REVERTED TO ODOM UNTIL IT RECOVERS",
-//     "CRITICAL ERROR: MONTE CARLO LOCALIZATION DEAD, REVERTED TO ODOMETRY FOR THE REST OF THE TRACKING",
-//     "WARNING: DRIVE MOTORS AT OVER 40 DEGREES, TAKE A BREAK IF POSSIBLE"
-// };
-
 
 //IMU Calibration
 void yogurt::UI::IMUcalibrate(lv_event_t* e) {
@@ -295,31 +285,3 @@ void yogurt::UI::update_data(lv_timer_t* t){
         }
     }
 }
-
-
-// void yogurt::UI::load_error_screen(){
-//     error_screen_loaded = true;
-//     bg = lv_image_create(error_scr);
-//     lv_image_set_src(bg, "S:UI/error.bin");
-
-//     error_data_btn = lv_button_create(error_scr);
-//     lv_obj_remove_style_all(error_data_btn);
-//     lv_obj_set_size(error_data_btn, 92, 92);
-//     lv_obj_align(error_data_btn, LV_ALIGN_TOP_LEFT, 194, 24);
-//     lv_obj_add_event_cb(error_data_btn, data_screen, LV_EVENT_CLICKED, NULL);
-
-//     error_lbl = lv_label_create(error_scr);
-//     lv_obj_set_size(error_lbl, 432, 96);
-//     lv_obj_set_style_text_font(error_lbl, &lv_font_montserrat_20, 0);
-//     lv_label_set_long_mode(error_lbl, LV_LABEL_LONG_WRAP);
-//     lv_obj_align(error_lbl, LV_ALIGN_CENTER, 0 , 0);
-//     lv_obj_set_style_text_align(error_lbl, LV_TEXT_ALIGN_CENTER, 0);
-// }
-
-// void yogurt::UI::display_error(ErrorType errors){
-//     if (error_screen_loaded == false){
-//         load_error_screen();
-//     }
-//     lv_screen_load(error_scr);
-//     lv_label_set_text_fmt(error_lbl, "%s\n", error_messages.at(errors).c_str());
-// }

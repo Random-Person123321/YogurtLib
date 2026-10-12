@@ -1,4 +1,6 @@
 #include "yogurtlib/global.hpp"
+// #include "yogurtlib/UI.hpp"
+#include "yogurtlib/api.hpp"
 
 // TODO-PORT: exactly what OdomSensors.imus / OdomSensors.vertical /
 // OdomSensors.horizontal need — port into the real `drivetrain`'s OdomSensors
@@ -18,19 +20,7 @@
 // pros::Distance fD(5);
 // pros::Distance rD(6);
 
-// TODO-PORT: needed by UI (uiobject) and by any opcontrol tank/arcade code —
-// port into wherever globals get wired up for real, don't leave commented out.
-// pros::Controller master(pros::E_CONTROLLER_MASTER);
-
-// TODO-REMOVE (probably): generic match-timing bookkeeping, but check first
-// whether anything besides the old drive.cpp/odometry.cpp still reads these
-// (both of those are themselves marked for removal) before deleting.
-//Time stuff (Clean?)
-int startTime = 0;
-int timeUsed = 0;
-
-//Print time used
-bool UseTime = false;
+pros::Controller master(pros::E_CONTROLLER_MASTER);
 
 //NEW
 //Just to help tie the different pieces of the library together
@@ -56,7 +46,7 @@ yogurt::ControllerSettings forwards(600.0, 0.0, 0.0, 3.0, 0.1, 0.5, 1000);
 yogurt::ControllerSettings forwardshead(300.0, 0.0, 5.0, 2.0, 0.5, 1.0, 250);
 yogurt::ControllerSettings turning(120.0, 0.0, 15.35, 2.0, 0.75, 8.0, 200);
 yogurt::ControllerSettings swings(250.0, 0.0, 0.0, 3.0, 0.75, 8.0, 200);
-yogurt::PursuitProfile hello3{.curvSlowK = 1.75};
+yogurt::PursuitProfile hello3{};
 // DriveMotors motors, OdomSensors odomSensors,
             //    ControllerSettings driveSettings, ControllerSettings angularSettings, //Lateral for driveStraight, Angular for heading correction,
             //    ControllerSettings turnSettings, ControllerSettings swingSettings, // turn for turn, swing for swing motion

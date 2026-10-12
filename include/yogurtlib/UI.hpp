@@ -15,13 +15,6 @@ struct AutoSelection{
     bool selected = false;
 };
 
-// enum ErrorType {
-//     IMUDRIFT,
-//     MCLLOST,
-//     MCLDEAD,
-//     MOTORHOT,
-// };
-
 class UI {
 
     static Drivetrain* drivetrainRef;
@@ -63,17 +56,7 @@ class UI {
     static lv_obj_t* next_btn;
     static lv_obj_t* last_btn;
     static lv_obj_t* select_btn;
-    static lv_obj_t* auton_name;
-
-    // //Error screen
-    // static lv_obj_t* error_data_btn;
-    // static lv_obj_t* error_lbl;
-
-    // static std::vector<std::string> error_messages;
-
-
-    // static void load_error_screen();
-    
+    static lv_obj_t* auton_name;    
 
     //This loads screens for a LVGL event when a button is pressed
     static void home_screen(lv_event_t* e);
@@ -103,19 +86,6 @@ public:
     } @endcode
      */
     void screen_init(Drivetrain& dt);
-
-    // /**
-    //  * @brief Prints error messages to the error screen, and automatically lazy loads the error screen
-    //  * 
-    //  *  Example code:
-    //  * 
-    //  * @code
-    //  display_error(enum errors);
-    //   @endcode
-    //   @param
-    //     enum errors  pulls the error message from the vector that will display on the screen
-    //  */
-    // static void display_error(ErrorType errors);
 
     static std::vector <AutoSelection> auton_list;
     static int selected_auto;

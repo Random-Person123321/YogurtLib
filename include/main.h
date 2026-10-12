@@ -4,7 +4,7 @@
  * Contains common definitions and header files used throughout your PROS
  * project.
  *
- * \copyright Copyright (c) 2017-2023, Purdue University ACM SIGBots.
+ * \copyright Copyright (c) 2017-2024, Purdue University ACM SIGBots.
  * All rights reserved.
  *
  * This Source Code Form is subject to the terms of the Mozilla Public
@@ -36,25 +36,10 @@
 
 #include "api.h"
 
-// struct RobotPose { double x = 0.0, y = 0.0, heading = 0.0; };
-// extern RobotPose pose;
-//HELLO HELLO HELLO
-//Please sort through global.cpp before finishing OOP
-extern double odomOffset;
-
-
-extern bool activateJamDetection;
-extern bool Parked;
-extern int startTime;
-extern int timeUsed;
-extern bool UseTime;
-
-
 /**
  * You should add more #includes here
  */
 //#include "okapi/api.hpp"
-
 
 /**
  * If you find doing pros::Motor() to be tedious and you'd prefer just to do

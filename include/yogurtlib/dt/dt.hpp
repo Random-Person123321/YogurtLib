@@ -7,6 +7,7 @@
 #include "yogurtlib/control.hpp"
 #include "yogurtlib/pose.hpp"
 #include "yogurtlib/pursuit.hpp"
+#include "yogurtlib/misc.hpp"
 
 namespace yogurt {
 
@@ -66,17 +67,13 @@ struct OdomSensors {
 // Tunable pure-pursuit profile. Defaults are reasonable starting points —
 // retune per-robot on the Drivetrain instance, not by editing this header.
 struct PursuitProfile {
-    double stopDist = 2.0;        // inches to the end point at which to stop
-    double endSlowDist = 24.0;    // start slowing down within this of the end
-    double minBase = 2200.0;      // minimum base voltage
-    double curvClampK = 0.98;     // clamp on normalized curvature (track/2 / R), avoids wheel reversal
-    double curvSlowK = 1.1;       // how hard to slow down for curvature
-    double endSlowMinFrac = 0.35; // minimum fraction of max voltage allowed near the end
-    double forwardTol = 0.5;      // inches; lookahead points must be at least this far in front
-    int stuckMs = 500;            // if no path progress for this long -> Stuck
-    int noLookFailMs = 800;       // if no lookahead intersection for this long -> try recovery
-
-    //No need for a default constructor to allow aggregates
+    VoltageTerms voltTerms; //Tuneable values for pure pursuit ("PID")
+    double speedAlpha = 0.4; //Smoothing for the measured speed
+    double lookaheadDist = 12.0; //How far ahead we look for points
+    double endTolerance = 1.0; //Counts as done once within this amount from the end point (Inches)
+    int stuckMs = 500; //if no path progress for this long -> Stuck
+    double stuckDist = 0.5; //If progressS doesnt increase by this  much we assume stuck
+    double lostDist = 12.0; //Exit if the robot is further than this from the nearest path point
 };
 
 struct DriveParams {
@@ -93,8 +90,6 @@ struct TurnToHeadParams {
     double earlyExitRange = 0.0;
     double slewRate = -1.0; 
 };
-
-
 
 struct TurnToPointParams {
     double maxVolt = -1.0;
@@ -127,14 +122,30 @@ struct DriveToPoseParams {
     bool usePurePursuit = true;
     bool reversed = false;
     double slewRate = -1.0;
-    
 };
 
 struct FollowParams {
-    double minVolt = 0.0;
-    double earlyExitRange = 0.0;
     bool reversed = false;
-    double slewRate = -1.0;
+    double lookaheadDist = -1.0; // Tunable per call, otherwise uses default value in Pursuit Profile
+    double minSpeed = 0.0; // Out of 127, keeps moving at end for motion chaining
+    double earlyExitRange = 0.0; //When to move on to the next function when motion chaining so doens't overshoot
+    double slewRate = -1.0; // Tunable per call, otherwise uses default value (600mv per loop)
+};
+
+enum struct PursuitDir { //Keep for now
+  Forward,
+  Reverse, 
+  Auto
+};
+
+enum struct FollowResult { // Probably Remove
+  ReachedEnd,
+  Timeout,
+  NoIntersection_TargetBehind,
+  Stuck,
+  PathTooShort,
+  Cancelled, 
+  Running
 };
 
 // Outcome of a blocking point/turn motion (driveStraight, turnToHeading,
@@ -590,143 +601,185 @@ public:
         return result;
     }
 
+    //THIS WOULD BELONG IN PURSUIT.CPP and is a helper function
+    // Gets the actual rpm of the motors using encoder units
+    double getActualSpeed (pros::MotorGroup& mg, double alpha, double& measured, double& lastTicks, uint32_t& lastStamp) {
+
+        uint32_t t = 0;
+        // Get raw direction flips with motor port flips
+        std::vector<int32_t> pos = mg.get_raw_position_all(&t); // Always 3000 ticks per second at rated speed(no matter the cartridge)
+        double ticksNow = 0.0;
+        int errors = 0;
+        for (auto &i : pos){
+            if (i != PROS_ERR) ticksNow += i;
+            else errors++;
+        }
+        if (errors == pos.size()) return measured;
+        ticksNow = ticksNow/ (pos.size() - errors);
+        if (lastStamp == 0) {
+            lastTicks = ticksNow;
+            lastStamp = t;
+            return 0.0;
+        }
+        if (t != lastStamp) {
+            double ticksPerSec = (ticksNow - lastTicks) / double(t - lastStamp) * 1000.0; // Final minus initial
+            double actual = ticksPerSec / 3000.0 * 127.0;
+            measured += alpha * (actual - measured);
+            lastTicks = ticksNow;
+            lastStamp = t;
+        }
+        return measured;
+    }
+
+    static double speedToVoltage (double vel, double accel, double measured, const VoltageTerms& vt) {
+        double volts = vt.kV * vel + vt.kA * accel + vt.kP * (vel - measured);
+        if (std::fabs(vel) > 0.5) {
+            volts += vt.kS * std::copysign(1.0, vel);
+        }
+        return std::clamp(volts, -12000.0, 12000.0);
+    }
+
     // Pure pursuit path following over a polyline of (x, y) waypoints.
     FollowResult follow(const std::vector<std::pair<double, double>>& path,
                          double lookaheadDist = 14.0, double maxVolt = -1.0,
                          int timeoutMs = 15000, double slewRate = 700.0,
                          PursuitDir dir = PursuitDir::Forward, bool progressCheck = true) {
-        if (maxVolt < 0.0) maxVolt = maxVoltage;
-        if (path.size() < 2) return FollowResult::PathTooShort;
+    //     if (maxVolt < 0.0) maxVolt = maxVoltage;
+    //     if (path.size() < 2) return FollowResult::PathTooShort;
 
-        cancelRequested = false;
+    //     cancelRequested = false;
 
-        const int startTime = pros::millis();
-        size_t lastSeg = 0;
-        size_t bestProgressSeg = 0;
-        double prevL = 0.0, prevR = 0.0;
-        const int stepMs = 10;
-        std::uint32_t prevTime = pros::millis();
+    //     const int startTime = pros::millis();
+    //     size_t lastSeg = 0;
+    //     size_t bestProgressSeg = 0;
+    //     double prevL = 0.0, prevR = 0.0;
+    //     const int stepMs = 10;
+    //     std::uint32_t prevTime = pros::millis();
 
-        const double Ld = std::max(lookaheadDist, 1.0);
+    //     const double Ld = std::max(lookaheadDist, 1.0);
 
         FollowResult result = FollowResult::Timeout;
-        bool reverse = false;
-        int noProgressMs = 0;
-        int noLookMs = 0;
+    //     bool reverse = false;
+    //     int noProgressMs = 0;
+    //     int noLookMs = 0;
 
-        if (dir == PursuitDir::Reverse) reverse = true;
-        else if (dir == PursuitDir::Forward) reverse = false;
-        else {
-            double dxEnd = path.back().first - pose.x;
-            double dyEnd = path.back().second - pose.y;
-            double h = deg2rad(pose.theta);
-            double xREnd = dxEnd * std::cos(h) + dyEnd * std::sin(h);
-            reverse = (xREnd < -2.0);
-        }
+    //     if (dir == PursuitDir::Reverse) reverse = true;
+    //     else if (dir == PursuitDir::Forward) reverse = false;
+    //     else {
+    //         double dxEnd = path.back().first - pose.x;
+    //         double dyEnd = path.back().second - pose.y;
+    //         double h = deg2rad(pose.theta);
+    //         double xREnd = dxEnd * std::cos(h) + dyEnd * std::sin(h);
+    //         reverse = (xREnd < -2.0);
+    //     }
 
-        while (pros::millis() - startTime < timeoutMs) {
-            if (cancelRequested.load() || pros::competition::is_disabled()) {
-                result = FollowResult::Cancelled;
-                break;
-            }
+    //     while (pros::millis() - startTime < timeoutMs) {
+    //         if (cancelRequested.load() || pros::competition::is_disabled()) {
+    //             result = FollowResult::Cancelled;
+    //             break;
+    //         }
 
-            double endDist = std::hypot(path.back().first - pose.x, path.back().second - pose.y);
-            if (endDist < pursuit.stopDist) {
-                result = FollowResult::ReachedEnd;
-                break;
-            }
+    //         double endDist = std::hypot(path.back().first - pose.x, path.back().second - pose.y);
+    //         if (endDist < pursuit.stopDist) {
+    //             result = FollowResult::ReachedEnd;
+    //             break;
+    //         }
 
-            double nHeading = reverse ? wrapDeg(pose.theta + 180.0) : pose.theta;
+    //         double nHeading = reverse ? wrapDeg(pose.theta + 180.0) : pose.theta;
 
-            double lookX, lookY;
-            bool hasLook = findLookaheadPoint(path, Ld, lastSeg, nHeading, pursuit.forwardTol, lookX, lookY);
-            if (!hasLook) noLookMs += 10;
-            else noLookMs = 0;
+    //         double lookX, lookY;
+    //         bool hasLook = findLookaheadPoint(path, Ld, lastSeg, nHeading, pursuit.forwardTol, lookX, lookY);
+    //         if (!hasLook) noLookMs += 10;
+    //         else noLookMs = 0;
 
-            // Progress is measured by how far along the path (segment index) the lookahead search has advanced, not by Euclidean distance to
-            // the final point, that distance can stay the same or even rise while the robot is correctly moving along the path
-            if (progressCheck) {
-                if (lastSeg > bestProgressSeg) {
-                    bestProgressSeg = lastSeg;
-                    noProgressMs = 0;
-                } else {
-                    noProgressMs += 10;
-                }
-                if (noProgressMs >= pursuit.stuckMs) {
-                    result = FollowResult::Stuck;
-                    break;
-                }
-            }
+    //         // Progress is measured by how far along the path (segment index) the lookahead search has advanced, not by Euclidean distance to
+    //         // the final point, that distance can stay the same or even rise while the robot is correctly moving along the path
+    //         if (progressCheck) {
+    //             if (lastSeg > bestProgressSeg) {
+    //                 bestProgressSeg = lastSeg;
+    //                 noProgressMs = 0;
+    //             } else {
+    //                 noProgressMs += 10;
+    //             }
+    //             if (noProgressMs >= pursuit.stuckMs) {
+    //                 result = FollowResult::Stuck;
+    //                 break;
+    //             }
+    //         }
 
-            double dx = lookX - pose.x;
-            double dy = lookY - pose.y;
-            double h = deg2rad(nHeading);
-            double cosT = std::cos(h);
-            double sinT = std::sin(h);
-            double xR = dx * cosT + dy * sinT;
-            double yR = -dx * sinT + dy * cosT;
-            if (xR < 1.0) xR = 1.0;
+    //         double dx = lookX - pose.x;
+    //         double dy = lookY - pose.y;
+    //         double h = deg2rad(nHeading);
+    //         double cosT = std::cos(h);
+    //         double sinT = std::sin(h);
+    //         double xR = dx * cosT + dy * sinT;
+    //         double yR = -dx * sinT + dy * cosT;
+    //         if (xR < 1.0) xR = 1.0;
 
-            if (!hasLook && xR < pursuit.forwardTol && noLookMs >= pursuit.noLookFailMs) {
-                size_t closest = lastSeg;
-                double bestD = 1e9;
-                size_t start = (lastSeg > 15) ? lastSeg - 15 : 0;
-                size_t end = std::min(path.size(), lastSeg + 25);
-                for (size_t i = start; i < end; ++i) {
-                    double ddx = path[i].first - pose.x;
-                    double ddy = path[i].second - pose.y;
-                    double d = ddx * ddx + ddy * ddy;
-                    if (d < bestD) { bestD = d; closest = i; }
-                }
-                driveToPoint(path[closest].first, path[closest].second, maxVolt, false);
-                lastSeg = (closest > 0) ? closest - 1 : 0;
-            }
+    //         if (!hasLook && xR < pursuit.forwardTol && noLookMs >= pursuit.noLookFailMs) {
+    //             size_t closest = lastSeg;
+    //             double bestD = 1e9;
+    //             size_t start = (lastSeg > 15) ? lastSeg - 15 : 0;
+    //             size_t end = std::min(path.size(), lastSeg + 25);
+    //             for (size_t i = start; i < end; ++i) {
+    //                 double ddx = path[i].first - pose.x;
+    //                 double ddy = path[i].second - pose.y;
+    //                 double d = ddx * ddx + ddy * ddy;
+    //                 if (d < bestD) { bestD = d; closest = i; }
+    //             }
+    //             driveToPoint(path[closest].first, path[closest].second, maxVolt, false);
+    //             lastSeg = (closest > 0) ? closest - 1 : 0;
+    //         }
 
-            // Curvature: standard pure-pursuit control law (curvature = 2y/L^2
-            // in the robot frame). `kRaw` is the true steering demand; `k` is
-            // the version clamped for wheel-speed synthesis. The speed
-            // slowdown below is deliberately computed from `kRaw`, not `k` —
-            // using the clamped value would under-slow exactly on the
-            // sharpest turns, the ones that need it most.
-            double L = std::hypot(xR, yR);
-            double denom = hasLook ? (Ld * Ld) : std::max(1.0, (L * L));
-            double curvature = (2.0 * yR) / denom;
-            double kRaw = /*curvature * (motors.getTrackWidth() / 2.0);*/ 10;
-            double k = clampd(kRaw, -pursuit.curvClampK, pursuit.curvClampK);
+    //         // Curvature: standard pure-pursuit control law (curvature = 2y/L^2
+    //         // in the robot frame). `kRaw` is the true steering demand; `k` is
+    //         // the version clamped for wheel-speed synthesis. The speed
+    //         // slowdown below is deliberately computed from `kRaw`, not `k` —
+    //         // using the clamped value would under-slow exactly on the
+    //         // sharpest turns, the ones that need it most.
+    //         double L = std::hypot(xR, yR);
+    //         double denom = hasLook ? (Ld * Ld) : std::max(1.0, (L * L));
+    //         double curvature = (2.0 * yR) / denom;
+    //         double kRaw = /*curvature * (motors.getTrackWidth() / 2.0);*/ 10;
+    //         double k = clampd(kRaw, -pursuit.curvClampK, pursuit.curvClampK);
 
-            double base = maxVolt;
-            if (endDist < pursuit.endSlowDist) {
-                double frac = pursuit.endSlowMinFrac + (1.0 - pursuit.endSlowMinFrac) * (endDist / pursuit.endSlowDist);
-                base = maxVolt * clampd(frac, pursuit.endSlowMinFrac, 1.0);
-            }
-            double curveFrac = 1.0 - std::min(0.70, std::fabs(kRaw) * pursuit.curvSlowK);
-            base *= curveFrac;
-            base = clampd(base, pursuit.minBase, maxVolt);
+    //         double base = maxVolt;
+    //         if (endDist < pursuit.endSlowDist) {
+    //             double frac = pursuit.endSlowMinFrac + (1.0 - pursuit.endSlowMinFrac) * (endDist / pursuit.endSlowDist);
+    //             base = maxVolt * clampd(frac, pursuit.endSlowMinFrac, 1.0);
+    //         }
+    //         double curveFrac = 1.0 - std::min(0.70, std::fabs(kRaw) * pursuit.curvSlowK);
+    //         base *= curveFrac;
+    //         base = clampd(base, pursuit.minBase, maxVolt);
 
-            double sign = reverse ? -1.0 : 1.0;
-            double leftV = base * (1.0 - sign * k);
-            double rightV = base * (1.0 + sign * k);
-            leftV *= sign;
-            rightV *= sign;
+    //         double sign = reverse ? -1.0 : 1.0;
+    //         double leftV = base * (1.0 - sign * k);
+    //         double rightV = base * (1.0 + sign * k);
+    //         leftV *= sign;
+    //         rightV *= sign;
 
-            leftV = limitOutput(leftV, prevL, -maxVolt, maxVolt, slewRate);
-            rightV = limitOutput(rightV, prevR, -maxVolt, maxVolt, slewRate);
+    //         leftV = limitOutput(leftV, prevL, -maxVolt, maxVolt, slewRate);
+    //         rightV = limitOutput(rightV, prevR, -maxVolt, maxVolt, slewRate);
 
-            motors.setVoltage(leftV, rightV);
-            pros::Task::delay_until(&prevTime, stepMs);
-        }
+    //         motors.setVoltage(leftV, rightV);
+    //         pros::Task::delay_until(&prevTime, stepMs);
+    //     }
 
-        motors.stop(BrakeMode::Brake);
+    //     motors.stop(BrakeMode::Brake);
         return result;
     }
 
-    // FollowResult curve(const std::vector<std::pair<double, double>>& path,
-    //                     bool async = false){
-    //     requestMotion();
-        
-        
-    //     endMotion();
-    // }
+    MotionResult curve(Path path, int timeoutMs, FollowParams params = {}, bool async = false) {
+        requestMotion();
+        if (!path.valid()) {
+            endMotion();
+            return MotionResult::Cancelled;
+        }
+        path.setStart(pose.x, pose.y);
+        PurePursuit pp(path);
+        double L = params.lookaheadDist < 0.0 ? pursuit.lookaheadDist : ;
+        endMotion();
+    }
  
     void tuneOffset() {
         requestMotion();
@@ -814,7 +867,8 @@ private:
     bool odomTaskStarted = false;
     std::atomic<bool> cancelRequested{false};
 
-
+    // Optional if not using Pure Pursuit
+    double topRpm; // Pure Pursuit uses this value. Tune by calling tuneTopSpeed() before making autonomous with Pure Pursuit
 
     // //Asymetrical slew
     double slew(double target, double prev, double maxDelta) const{
@@ -1028,9 +1082,7 @@ private:
     int  motionDepth = 0;    
 
     void requestMotion() {
-        std::cout << "Motion Requested\n";
         mutex.take(TIMEOUT_MAX);
-        std::cout << "Motion Requested2\n";
         if (motionDepth++ == 0){
             progress = 0.0;
             progressPaused = false;
@@ -1040,7 +1092,6 @@ private:
     }
     
     void endMotion(){
-        std::cout << "Motion Ending\n";
        if(--motionDepth == 0) motionRunning = false;
        mutex.give();
     }
