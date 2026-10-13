@@ -13,8 +13,8 @@ struct PathPoint {
 struct PathConfig {
     double maxSpeed = 127.0; //max speed the robot drives, out of 127
     double decelDist = 24.0; //Inches that allows the robot to slow from full speed to 0. Smaller number means braking later
-    double slew = 600.0; //mV per loop. How much to speed up while accelerating to reduce wheel slip
     double turnK = 5.0; //speed(0-127) per inch of turn radius. How much to slow down by during tight curves/turns
+    double maxPtSpacing = 3.0; // If any segment is more than 3" apart, the path build() function will inject more, useful for driveToPoint function where there is only two largely space points
 };
 
 struct WheelTargets {
@@ -27,6 +27,12 @@ struct VoltageTerms {
     double kA = 0.0;
     double kS = 0.0; //Tune
     double kP = 0.0; //Tune
+};
+
+struct FollowReturn {
+    WheelTargets wheels;
+    bool done, pivoting = false;
+    double distToPath;
 };
 
 inline double slew(double target, double prev, double maxDelta) {
@@ -44,6 +50,7 @@ private:
     std::vector<std::pair<double, double>> waypoints;
     std::vector<PathPoint> pts;
     PathConfig configs;
+    bool startReplaced = false;
     double trackWidth = 0.0; // inches, center-to-center of left/right wheels
 
     static double distance (const PathPoint& first, const PathPoint& second) {
@@ -54,34 +61,54 @@ private:
     }
     void build() {
         pts.clear();
+        std::vector<PathPoint> raw = {};
         if (waypoints.size() < 2) return;
         for (size_t i = 0; i < waypoints.size(); i++) {
             PathPoint p = {waypoints[i].first, waypoints[i].second};
-            if (pts.empty()) {
-                pts.push_back(p);
+            if (raw.empty()) {
+                raw.push_back(p);
                 continue;
             }
             
-            double dx = waypoints[i].first - pts.back().x;
-            double dy = waypoints[i].second - pts.back().y;
-            double dif = std::hypot(dx, dy);
+            double dx = waypoints[i].first - raw.back().x;
+            double dy = waypoints[i].second - raw.back().y;
+            double dif = std::hypot(dx, dy); 
             if (dif < 0.01) continue;
-            else p.s = pts.back().s + dif;
-            pts.push_back(p);
+            else p.s = raw.back().s + dif;
+            raw.push_back(p);
         }
-        if (pts.size() < 2) return;
+        if (raw.size() < 2) return;
         //Circle and curvature math
-        for (int i = 1; i < pts.size() - 1; i++) {
-            double a = distance(pts[i - 1], pts[i]);
-            double b = distance(pts[i], pts[i + 1]);
-            double c = distance(pts[i - 1], pts[i + 1]);
+        for (int i = 1; i < raw.size() - 1; i++) {
+            double a = distance(raw[i - 1], raw[i]);
+            double b = distance(raw[i], raw[i + 1]);
+            double c = distance(raw[i - 1], raw[i + 1]);
             
-            double cross = (pts[i].x - pts[i - 1].x) * (pts[i + 1].y - pts[i].y) - 
-                           (pts[i].y - pts[i - 1].y) * (pts[i + 1].x - pts[i].x);
+            double cross = (raw[i].x - raw[i - 1].x) * (raw[i + 1].y - raw[i].y) - 
+                           (raw[i].y - raw[i - 1].y) * (raw[i + 1].x - raw[i].x);
             double denom = (a * b * c);
-            if (fabs(denom) <= 1e-9) pts[i].curvature = 0;
-            else pts[i].curvature = 2 * cross / denom;            
+            if (fabs(denom) <= 1e-9) raw[i].curvature = 0;
+            else raw[i].curvature = 2 * cross / denom;            
         }
+        if (startReplaced && raw.size() >= 3 && std::fabs(raw[2].curvature) < std::fabs(raw[1].curvature)) 
+            raw[1].curvature = raw[2].curvature;
+        
+        pts.push_back(raw[0]);
+        for (int i = 0; i < raw.size() - 1; i++) {
+            PathPoint a = raw[i], b = raw[i + 1];
+            double dx = b.x - a.x, dy = b.y - a.y;
+            double ds = std::hypot(dx, dy);
+            int spacing = std::ceil(ds / configs.maxPtSpacing);
+            double xSpace = dx / spacing, ySpace = dy / spacing;
+            double sSpace = ds / spacing, curvSpace = (b.curvature - a.curvature) / spacing;
+            for (int j = 1; j <= spacing; j++) {
+                pts.push_back({xSpace * j + a.x, 
+                               ySpace * j + a.y, 
+                               sSpace * j + a.s, 
+                               curvSpace * j + a.curvature});
+            }
+        }
+
         //Initializing speed for every point
         for (int i = 0; i < pts.size(); i++) {
             double v = configs.maxSpeed;
@@ -109,6 +136,7 @@ public: //Const accepts written in lists like {{0, 0}, {10, 5}}
           waypoints(waypoints), configs(configs), trackWidth(trackWidth) { build(); }
         
     void setStart(double x, double y){
+        startReplaced = true;
         if (!waypoints.empty()) {
             waypoints[0].first = x;
             waypoints[0].second = y;
@@ -130,10 +158,11 @@ private:
     Path path;
     size_t closestIdx = 0; //Closest point, always moves in direction of travel
     double lastLookFrac = 0.0;
-    double lookX = 0.0, lookY = 0.0;
     double prevVel = 0.0;
+    double lookX = 0.0, lookY = 0.0;
     double prevL = 0.0, prevR = 0.0;
-    double progressS = 0.0;
+    bool behind = false;
+    double sideOut = 0.0;
 
     /*
     Defining two vectors to help us:
@@ -158,7 +187,7 @@ private:
 
     bool findLookahead(double x, double y, double L) {
         if (!path.valid()) return false;
-        updateClosest(x, y);
+        // updateClosest(x, y, L);
 
         int startIdx = std::min(
             std::max(
@@ -181,7 +210,7 @@ private:
             double t1 = (-b - std::sqrt(disc)) / (2 * a);
             double t2 = (-b + std::sqrt(disc)) / (2 * a);
 
-            for (double t: {t1, t2}) {
+            for (double t: {t2, t1}) {
                 if (t >= 0 && (t <= 1 || i == path.size() - 2)) {
                     double frac = i + t;
                     if (frac >= lastLookFrac && frac >= closestIdx) {
@@ -196,7 +225,7 @@ private:
         return false;
     }
 
-    double arcCurv(Pose& p, bool reversed) {
+    double arcCurv(Pose& p, bool reversed, bool& behind, double& sideOut) {
         
         double h = deg2rad(p.theta);
         double dx = lookX - p.x, dy = lookY - p.y;
@@ -206,6 +235,10 @@ private:
         double D2 = dx * dx + dy * dy;
         if (D2 < 1e-9) return 0.0;
         double curv = 2 * side / D2;
+
+        double fwd = dx * std::cos(h) + dy * std::sin(h);
+        sideOut = side;
+        behind = (D2 >= 1e-9) && (fwd < 0);
         return curv;
     }
 
@@ -217,7 +250,7 @@ private:
     // sRobot = A.s + along
     // · is the dot product: x*x' + y*y'. It measures how far the robot is along that direction. 
     // Save sRobot in a member variable (e.g. progressS), because waitUntil() and stuck detection will use it later.
-    double targetSpeed(Pose& pose, double minSpeed) {
+    double targetSpeed(Pose& pose, double minSpeed, double maxStep) {
         int A = closestIdx > 0 ? closestIdx - 1 : 0;
         int B = std::min((int)closestIdx + 1, path.size() - 1);
         double dx = path[B].x - path[A].x;
@@ -254,17 +287,22 @@ private:
         double endCap = 127 * std::sqrt(remaining / path.config().decelDist);
         double target = std::min(planned, endCap);
         if (minSpeed > 0 && target < minSpeed) target = minSpeed;
-        double maxStep = path.config().slew / 12000.0 * 127.0;
         target = slew(target, prevVel, maxStep);
         prevVel = target;
         return target;
         
     }
 
-    WheelTargets wheelSpeeds(double target, double curv, bool reversed, double dt) { // This might just need to call targ instead of passing in
+    WheelTargets wheelSpeeds(double target, double curv, bool reversed, double dt, bool pivot, double side) { // This might just need to call targ instead of passing in
         //Differential Drive
         double left = target * (1 - curv * path.getTrackWidth()/2);
         double right = target * (1 + curv * path.getTrackWidth()/2);
+        if(pivot) {
+            double sgn = (side >= 0) ? 1.0 : -1.0;
+            double pv = std::min(target, pivotSpeed);
+            left = -sgn * pv; right = sgn * pv;
+        }
+
         if (reversed) {
             double temp = left;
             left = -right; right = -temp;
@@ -292,13 +330,15 @@ private:
 
 public:
     PurePursuit(const Path& path) : path(path) {}
+    double progressS = 0.0;
 
-    size_t updateClosest(double x, double y) {
+    size_t updateClosest(double x, double y, double lookaheadDist) {
         if (!path.valid()) return 0;
         size_t endIdx = std::min(closestIdx + 25, (size_t)path.size()) - 1;
         double minDist = std::numeric_limits<double>::max();
         size_t minIdx = (size_t)path.size() - 1;
         for (size_t i = closestIdx; i <= endIdx; i++) {
+            if (i > closestIdx + 1 && path[closestIdx].s + lookaheadDist < path[i].s) break;
             double dx = path[i].x - x;
             double dy = path[i].y - y;
             double d = dx * dx + dy * dy;
@@ -313,16 +353,21 @@ public:
     
     size_t closest() const {return closestIdx; }
     
-    void step(Pose& p, double lookaheadDist, bool reversed, double minSpeed, double slewRate, double endTolerance, double dt) {
-        updateClosest(pose.x, pose.y);
-        findLookahead(pose.x, pose.y, lookaheadDist);
-        double curv = arcCurv(p, reversed);
-        double target = targetSpeed(p, minSpeed, slewRate);
-        double wheels = wheelSpeeds(target, curv, reveresed, dt);
-        bool done = isDone(p, endTolerance, lookaheadDist);
+    FollowReturn step(Pose& p, double lookaheadDist, bool reversed, double minSpeed, double maxStep, double endTolerance, double dt) {
+        FollowReturn follow;
+        updateClosest(p.x, p.y, lookaheadDist);
+        findLookahead(p.x, p.y, lookaheadDist);
+        
+        bool behind = false; double side = 0.0;
+        //part 2 / 3 not working
+        double curv = arcCurv(p, reversed, behind, sideOut);
+        double target = targetSpeed(p, minSpeed, maxStep);
+        follow.wheels = wheelSpeeds(target, curv, reversed, dt);
+        follow.done = isDone(p, endTolerance, lookaheadDist);
         double dx = p.x - path[closestIdx].x;
         double dy = p.y - path[closestIdx].y;
-        double distToPath = std::hypot(dx, dy);
+        follow.distToPath = std::hypot(dx, dy);
+        return follow;
     }
 };
 

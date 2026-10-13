@@ -5,7 +5,6 @@
 #define M_PI 3.14159265358979323846
 #endif
 
-
 // *** Angle Helpers ***
 inline double wrapDeg(double a) {
   while (a > 180.0) a -= 360.0;

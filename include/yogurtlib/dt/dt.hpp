@@ -132,21 +132,6 @@ struct FollowParams {
     double slewRate = -1.0; // Tunable per call, otherwise uses default value (600mv per loop)
 };
 
-enum struct PursuitDir { //Keep for now
-  Forward,
-  Reverse, 
-  Auto
-};
-
-enum struct FollowResult { // Probably Remove
-  ReachedEnd,
-  Timeout,
-  NoIntersection_TargetBehind,
-  Stuck,
-  PathTooShort,
-  Cancelled, 
-  Running
-};
 
 // Outcome of a blocking point/turn motion (driveStraight, turnToHeading,
 // turnToPoint, swingToHeading).
@@ -154,31 +139,26 @@ enum class MotionResult {
     Settled,
     Timeout,
     Cancelled,
-    Running
+    Running,
+    Chained,
+    Stuck,
+    Lost,
+    InvalidPath
 };
 
-inline std::string entostr (FollowResult result) {
+inline std::string entostr (MotionResult result) {
     int num = (int)result;
-    // switch (num){
-    //     case 0: return "ReachEnd";
-    //     case 1: return "Timeout";
-    // }
-    if (num == 0) {
-        return "ReachedEnd";
+    switch (num){
+        case 0  : return "Settled";
+        case 1  : return "Timeout";
+        case 2  : return "Cancelled";
+        case 3  : return "Running";
+        case 4  : return "Chained";
+        case 5  : return "Stuck";
+        case 6  : return "Lost";
+        case 7  : return "InvalidPath";
+        default : return "Unknown";
     }
-    else if (num == 1) {
-        return "Timeout";
-    }
-    else if (num == 2) {
-        return "NoIntersection_TargetBehind";
-    }
-    else if (num == 3) {
-        return "Stuck";
-    }
-    else if (num == 4) {
-        return "PathTooShort";
-    }
-    else return "Unknown";
 }
 
 
@@ -191,7 +171,7 @@ class Drivetrain {
 public:
     DriveMotors motors;
     OdomSensors odom;
-    PursuitProfile pursuit;
+    PursuitProfile pursuitSettings;
     
     //Default maxVoltage and slew
     double maxVoltage = 12000.0;
@@ -334,7 +314,7 @@ public:
             double headErr = angleDiffDeg(startHeading, pose.theta);
             
             if (chainExit(distErr, dir, minV, params.earlyExitRange)) {
-                result = MotionResult::Settled;
+                result = MotionResult::Chained;
                 motionChain = true;
                 break;
             }
@@ -412,7 +392,7 @@ public:
             double err = angleDiffDeg(targetDeg, pose.theta);
             
             if (chainExit(err, dir, minV, params.earlyExitRange)) {
-                result = MotionResult::Settled;
+                result = MotionResult::Chained;
                 motionChain = true;
                 break;
             }
@@ -502,7 +482,7 @@ public:
             double err = angleDiffDeg(targetDeg, pose.theta);
 
             if (chainExit(err, dir, minV, params.earlyExitRange)) {
-                result = MotionResult::Settled;
+                result = MotionResult::Chained;
                 motionChain = true;
                 break;
             }
@@ -532,14 +512,14 @@ public:
 
     // Drives to (x, y): pure pursuit by default, or turn-then-drive if
     // usePurePursuit is false.
-    FollowResult driveToPoint(double x, double y, int turnTimeout, int driveTimeout, 
+    MotionResult driveToPoint(double x, double y, int turnTimeout, int driveTimeout, 
                               DriveToPointParams params = {}, bool async = false) {
         requestMotion();
         if (async){
             pros::Task task([this, x, y, turnTimeout, driveTimeout, params]() { driveToPoint(x, y, turnTimeout, driveTimeout, params, false);});
             endMotion();
             pros::delay(10);
-            return FollowResult::Running;
+            return MotionResult::Running;
         }
         
         if (params.maxVolt < 0.0) params.maxVolt = maxVoltage;
@@ -547,8 +527,7 @@ public:
 
         if (params.usePurePursuit) {
             std::vector<std::pair<double, double>> path = {{pose.x, pose.y}, {x, y}};
-            PursuitDir dir = params.reversed ? PursuitDir::Reverse : PursuitDir::Forward;
-            FollowResult result = follow(path, 11.5, params.maxVolt, driveTimeout, 700.0, dir, false);
+            MotionResult result = follow(path, 11.5, params.maxVolt, driveTimeout, 700.0);
             endMotion();
             return result;
         }
@@ -562,21 +541,21 @@ public:
         progressPaused = true;
         if (turnToHeading(targetHeading, turnTimeout, {.maxVolt = params.maxVolt, .minVolt = params.minVolt, .earlyExitRange = params.earlyExitRange, .slewRate = params.slewRate}, false) == MotionResult::Cancelled) {
             endMotion();
-            return FollowResult::Cancelled;
+            return MotionResult::Cancelled;
         }
         progressPaused = false;
         double dist = pose.distanceTo(Pose(x, y));
         if (driveStraight(sign * dist, driveTimeout, {.maxVolt = params.maxVolt, .minVolt = params.minVolt, .earlyExitRange = params.earlyExitRange, .slewRate = params.slewRate}, false) == MotionResult::Cancelled) {
             endMotion();
-            return FollowResult::Cancelled;
+            return MotionResult::Cancelled;
         }
         endMotion();
-        return FollowResult::ReachedEnd;
+        return MotionResult::Settled;
     }
 
 
     // Drives to (x, y) then turns to face `headingDeg`.
-    FollowResult driveToPose(double x, double y, double headingDeg,
+    MotionResult driveToPose(double x, double y, double headingDeg,
                              int turnTimeout, int driveTimeout,
                              DriveToPoseParams params = {}, bool async = false) {
         requestMotion();
@@ -584,10 +563,10 @@ public:
             pros::Task task([this, x, y, headingDeg, turnTimeout, driveTimeout, params]() { driveToPose(x, y, headingDeg, turnTimeout, driveTimeout, params, false);});
             endMotion();
             pros::delay(10);
-            return FollowResult::Running;
+            return MotionResult::Running;
         }
-        FollowResult result = driveToPoint(x, y, turnTimeout, driveTimeout,  {.usePurePursuit = params.usePurePursuit, .reversed = params.reversed, .maxVolt = params.maxVolt, .minVolt = params.minVolt, .earlyExitRange = params.earlyExitRange, .slewRate = params.slewRate}, false);
-        if (result == FollowResult::Cancelled) {
+        MotionResult result = driveToPoint(x, y, turnTimeout, driveTimeout,  {.usePurePursuit = params.usePurePursuit, .reversed = params.reversed, .maxVolt = params.maxVolt, .minVolt = params.minVolt, .earlyExitRange = params.earlyExitRange, .slewRate = params.slewRate}, false);
+        if (result == MotionResult::Cancelled) {
             endMotion();
             return result;
         }
@@ -595,55 +574,19 @@ public:
         progressPaused = true;
         if (turnToHeading(headingDeg, turnTimeout, {.maxVolt = params.maxVolt, .minVolt = params.minVolt, .earlyExitRange = params.earlyExitRange, .slewRate = params.slewRate}, false) == MotionResult::Cancelled) {
             endMotion();
-            return FollowResult::Cancelled;
+            return MotionResult::Cancelled;
         }
         endMotion();
         return result;
     }
 
-    //THIS WOULD BELONG IN PURSUIT.CPP and is a helper function
-    // Gets the actual rpm of the motors using encoder units
-    double getActualSpeed (pros::MotorGroup& mg, double alpha, double& measured, double& lastTicks, uint32_t& lastStamp) {
-
-        uint32_t t = 0;
-        // Get raw direction flips with motor port flips
-        std::vector<int32_t> pos = mg.get_raw_position_all(&t); // Always 3000 ticks per second at rated speed(no matter the cartridge)
-        double ticksNow = 0.0;
-        int errors = 0;
-        for (auto &i : pos){
-            if (i != PROS_ERR) ticksNow += i;
-            else errors++;
-        }
-        if (errors == pos.size()) return measured;
-        ticksNow = ticksNow/ (pos.size() - errors);
-        if (lastStamp == 0) {
-            lastTicks = ticksNow;
-            lastStamp = t;
-            return 0.0;
-        }
-        if (t != lastStamp) {
-            double ticksPerSec = (ticksNow - lastTicks) / double(t - lastStamp) * 1000.0; // Final minus initial
-            double actual = ticksPerSec / 3000.0 * 127.0;
-            measured += alpha * (actual - measured);
-            lastTicks = ticksNow;
-            lastStamp = t;
-        }
-        return measured;
-    }
-
-    static double speedToVoltage (double vel, double accel, double measured, const VoltageTerms& vt) {
-        double volts = vt.kV * vel + vt.kA * accel + vt.kP * (vel - measured);
-        if (std::fabs(vel) > 0.5) {
-            volts += vt.kS * std::copysign(1.0, vel);
-        }
-        return std::clamp(volts, -12000.0, 12000.0);
-    }
+    
 
     // Pure pursuit path following over a polyline of (x, y) waypoints.
-    FollowResult follow(const std::vector<std::pair<double, double>>& path,
+    MotionResult follow(const std::vector<std::pair<double, double>>& path,
                          double lookaheadDist = 14.0, double maxVolt = -1.0,
                          int timeoutMs = 15000, double slewRate = 700.0,
-                         PursuitDir dir = PursuitDir::Forward, bool progressCheck = true) {
+                         bool progressCheck = true) {
     //     if (maxVolt < 0.0) maxVolt = maxVoltage;
     //     if (path.size() < 2) return FollowResult::PathTooShort;
 
@@ -658,7 +601,7 @@ public:
 
     //     const double Ld = std::max(lookaheadDist, 1.0);
 
-        FollowResult result = FollowResult::Timeout;
+        MotionResult result = MotionResult::Timeout;
     //     bool reverse = false;
     //     int noProgressMs = 0;
     //     int noLookMs = 0;
@@ -768,17 +711,111 @@ public:
     //     motors.stop(BrakeMode::Brake);
         return result;
     }
+    
+    //THIS WOULD BELONG IN PURSUIT.CPP and is a helper function
+    // Gets the actual rpm of the motors using encoder units
+    double getActualSpeed (pros::MotorGroup& mg, double alpha, double& measured, double& lastTicks, uint32_t& lastStamp) {
+
+        uint32_t t = 0;
+        // Get raw direction flips with motor port flips
+        std::vector<int32_t> pos = mg.get_raw_position_all(&t); // Always 3000 ticks per second at rated speed(no matter the cartridge)
+        double ticksNow = 0.0;
+        int errors = 0;
+        for (auto &i : pos){
+            if (i != PROS_ERR) ticksNow += i;
+            else errors++;
+        }
+        if (errors == pos.size()) return measured;
+        ticksNow = ticksNow/ (pos.size() - errors);
+        if (lastStamp == 0) {
+            lastTicks = ticksNow;
+            lastStamp = t;
+            return 0.0;
+        }
+        if (t != lastStamp) {
+            double ticksPerSec = (ticksNow - lastTicks) / double(t - lastStamp) * 1000.0; // Final minus initial
+            double actual = ticksPerSec / 3000.0 * 127.0;
+            measured += alpha * (actual - measured);
+            lastTicks = ticksNow;
+            lastStamp = t;
+        }
+        return measured;
+    }
+
+    static double speedToVoltage (double vel, double accel, double measured, const VoltageTerms& vt) {
+        double volts = vt.kV * vel + vt.kA * accel + vt.kP * (vel - measured);
+        if (std::fabs(vel) > 0.5) {
+            volts += vt.kS * std::copysign(1.0, vel);
+        }
+        return std::clamp(volts, -12000.0, 12000.0);
+    }
 
     MotionResult curve(Path path, int timeoutMs, FollowParams params = {}, bool async = false) {
         requestMotion();
+        if(async){
+            pros::Task task([this, path, timeoutMs, params]() { curve(path, timeoutMs, params, false);});
+            endMotion();
+            pros::delay(10);
+            return MotionResult::Running;
+        }
         if (!path.valid()) {
             endMotion();
-            return MotionResult::Cancelled;
+            return MotionResult::InvalidPath; // do whatever the right one is
         }
+        
         path.setStart(pose.x, pose.y);
         PurePursuit pp(path);
-        double L = params.lookaheadDist < 0.0 ? pursuit.lookaheadDist : ;
+        double L = params.lookaheadDist < 0.0 ? std::fabs(pursuitSettings.lookaheadDist) : std::fabs(params.lookaheadDist);
+        params.slewRate = params.slewRate < 0.0 ? std::fabs(defaultSlew) : std::fabs(params.slewRate);
+
+        double measuredL = 0.0, lastTicksL = 0.0, measuredR = 0.0, lastTicksR = 0.0;
+        uint32_t lastStampL = 0, lastStampR = 0;
+        uint32_t now = pros::millis();
+        const int stepMs = 10;
+        const double dt = stepMs / 1000.0;
+        double bestProgress = 0.0;
+        uint32_t bestProgressTime = now, startTime = now;
+        bool motionChain = false;
+        MotionResult result = MotionResult::Timeout;
+        
+        while(pros::millis() - startTime < timeoutMs) {
+            if (cancelRequested.load() || pros::competition::is_disabled()) {
+                result = MotionResult::Cancelled;
+                break;
+            }
+            Pose pose = getPose();
+            double maxStep = params.slewRate / 120000.0 * 127.0;
+            FollowReturn r = pp.step(pose, L, params.reversed, params.minSpeed, maxStep, pursuitSettings.endTolerance, dt);
+            
+            if (r.distToPath > pursuitSettings.lostDist) {
+                result = MotionResult::Lost;
+                break;
+            }
+            if (r.done) {
+                result = MotionResult::Settled;
+                break;
+            }
+            if (params.earlyExitRange > 0 && path.length() - pp.progressS < params.earlyExitRange) {
+                result = MotionResult::Chained;
+                motionChain = true;
+                break;
+            }
+            if(pp.progressS >= bestProgress + pursuitSettings.stuckDist) {
+                bestProgress = pp.progressS;
+                bestProgressTime = now;
+            }
+            double leftVel = getActualSpeed(*motors.left, 0.4, measuredL, lastTicksL, lastStampL);
+            double rightVel = getActualSpeed(*motors.right, 0.4, measuredR, lastTicksR, lastStampR);
+            double leftV = speedToVoltage(leftVel, r.wheels.leftAccel, measuredL, pursuitSettings.voltTerms);
+            double rightV = speedToVoltage(rightVel, r.wheels.rightAccel, measuredR, pursuitSettings.voltTerms);
+            
+            motors.setVoltage(leftV, rightV);
+            progress = pp.progressS;
+            pros::Task::delay_until(&now, stepMs);
+        }
+        if(!motionChain) motors.setBrakeMode(BrakeMode::Brake);
         endMotion();
+        return result;
     }
  
     void tuneOffset() {
@@ -846,8 +883,6 @@ public:
         do pros::delay(25);
         while (motionRunning.load() && progress.load() < target);
     }
-
-
 
 private:
     // No gains by default (no correction) until setHeadingCorrectionGains() is called.

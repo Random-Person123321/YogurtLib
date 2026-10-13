@@ -120,7 +120,7 @@ public:
         }
     }
 
-    bool Imubad (int value){
+    bool Imubad (double value){
         return std::isnan(value) || std::isinf(value);
     }
 };
