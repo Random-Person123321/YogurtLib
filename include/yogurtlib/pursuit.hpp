@@ -1,6 +1,6 @@
 #pragma once
-#include <vector>
-#include <algorithm>
+// #include <vector>
+// #include <algorithm>
 #include "yogurtlib/pose.hpp"
 namespace yogurt{
 
@@ -31,8 +31,8 @@ struct VoltageTerms {
 
 struct FollowReturn {
     WheelTargets wheels;
-    bool done, pivoting = false;
-    double distToPath;
+    bool done = false, pivoting = false;
+    double distToPath = 0.0;
 };
 
 inline double slew(double target, double prev, double maxDelta) {
@@ -161,8 +161,6 @@ private:
     double prevVel = 0.0;
     double lookX = 0.0, lookY = 0.0;
     double prevL = 0.0, prevR = 0.0;
-    bool behind = false;
-    double sideOut = 0.0;
 
     /*
     Defining two vectors to help us:
@@ -225,20 +223,19 @@ private:
         return false;
     }
 
-    double arcCurv(Pose& p, bool reversed, bool& behind, double& sideOut) {
+    double arcCurv(Pose& p, bool reversed, bool& behind, double& side) {
         
         double h = deg2rad(p.theta);
         double dx = lookX - p.x, dy = lookY - p.y;
         if (reversed) h += M_PI;
-        double side = -dx * std::sin(h) + dy * std::cos(h);
+        side = -dx * std::sin(h) + dy * std::cos(h);
 
         double D2 = dx * dx + dy * dy;
         if (D2 < 1e-9) return 0.0;
         double curv = 2 * side / D2;
 
         double fwd = dx * std::cos(h) + dy * std::sin(h);
-        sideOut = side;
-        behind = (D2 >= 1e-9) && (fwd < 0);
+        behind = (D2 >= 1e-9) && (fwd < 0.0);
         return curv;
     }
 
@@ -293,13 +290,14 @@ private:
         
     }
 
-    WheelTargets wheelSpeeds(double target, double curv, bool reversed, double dt, bool pivot, double side) { // This might just need to call targ instead of passing in
+    WheelTargets wheelSpeeds(double target, double curv, bool reversed, 
+                             double dt, bool behind, double side) { // This might just need to call targ instead of passing in
         //Differential Drive
         double left = target * (1 - curv * path.getTrackWidth()/2);
         double right = target * (1 + curv * path.getTrackWidth()/2);
-        if(pivot) {
+        if(behind) {
             double sgn = (side >= 0) ? 1.0 : -1.0;
-            double pv = std::min(target, pivotSpeed);
+            double pv = target;
             left = -sgn * pv; right = sgn * pv;
         }
 
@@ -329,7 +327,9 @@ private:
 
 
 public:
-    PurePursuit(const Path& path) : path(path) {}
+    PurePursuit(const Path& path, double startSpeed, double startL, double startR) : 
+                path(path), prevVel(std::min(startSpeed, 0.0)), prevL(startL), prevR(startR) {}
+
     double progressS = 0.0;
 
     size_t updateClosest(double x, double y, double lookaheadDist) {
@@ -353,16 +353,18 @@ public:
     
     size_t closest() const {return closestIdx; }
     
-    FollowReturn step(Pose& p, double lookaheadDist, bool reversed, double minSpeed, double maxStep, double endTolerance, double dt) {
+    FollowReturn step(Pose& p, double lookaheadDist, bool reversed, 
+                      double minSpeed, double maxStep, double endTolerance, double dt) {
         FollowReturn follow;
         updateClosest(p.x, p.y, lookaheadDist);
         findLookahead(p.x, p.y, lookaheadDist);
         
         bool behind = false; double side = 0.0;
         //part 2 / 3 not working
-        double curv = arcCurv(p, reversed, behind, sideOut);
+        double curv = arcCurv(p, reversed, behind, side);
         double target = targetSpeed(p, minSpeed, maxStep);
-        follow.wheels = wheelSpeeds(target, curv, reversed, dt);
+        follow.wheels = wheelSpeeds(target, curv, reversed, dt, behind, side);
+        follow.pivoting = behind;
         follow.done = isDone(p, endTolerance, lookaheadDist);
         double dx = p.x - path[closestIdx].x;
         double dy = p.y - path[closestIdx].y;

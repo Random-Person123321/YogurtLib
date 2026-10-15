@@ -68,18 +68,18 @@ struct OdomSensors {
 // retune per-robot on the Drivetrain instance, not by editing this header.
 struct PursuitProfile {
     VoltageTerms voltTerms; //Tuneable values for pure pursuit ("PID")
-    double speedAlpha = 0.4; //Smoothing for the measured speed
     double lookaheadDist = 12.0; //How far ahead we look for points
     double endTolerance = 1.0; //Counts as done once within this amount from the end point (Inches)
     int stuckMs = 500; //if no path progress for this long -> Stuck
     double stuckDist = 0.5; //If progressS doesnt increase by this  much we assume stuck
     double lostDist = 12.0; //Exit if the robot is further than this from the nearest path point
+    double speedAlpha = 0.4; //Smoothing for the measured speed
 };
 
 struct DriveParams {
-    double headingOffset = 0.0;
     double maxVolt = -1.0;
     double minVolt = 0.0;
+    double headingOffset = 0.0;
     double earlyExitRange = 0.0;
     double slewRate = -1.0; 
 };
@@ -94,8 +94,8 @@ struct TurnToHeadParams {
 struct TurnToPointParams {
     double maxVolt = -1.0;
     double minVolt = 0.0;
-    double earlyExitRange = 0.0;
     bool reversed = false;
+    double earlyExitRange = 0.0;
     double slewRate = -1.0;
 };
 
@@ -106,11 +106,19 @@ struct SwingToHeadingParams {
     double slewRate = -1.0;
 };
 
-struct DriveToPointParams {
-    bool usePurePursuit = true; 
-    bool reversed = false;
+struct BoomParams {
     double maxVolt = -1.0;
     double minVolt = 0.0;
+    bool reversed = false;
+    double earlyExitRange = 0.0;
+    double slewRate = -1.0;
+};
+
+struct DriveToPointParams {
+    double maxVolt = -1.0;
+    double minVolt = 0.0;
+    bool usePurePursuit = true; 
+    bool reversed = false;
     double earlyExitRange = 0.0;
     double slewRate = -1.0;
 };
@@ -118,9 +126,9 @@ struct DriveToPointParams {
 struct DriveToPoseParams {
     double maxVolt = -1.0;
     double minVolt = 0.0;
-    double earlyExitRange = 0.0;
     bool usePurePursuit = true;
     bool reversed = false;
+    double earlyExitRange = 0.0;
     double slewRate = -1.0;
 };
 
@@ -510,6 +518,24 @@ public:
         return result;
     }
 
+    MotionResult boomerang(double x, double y, double heading, double timeOut, BoomParams params, bool async = false) {
+        requestMotion();
+        // /https://area-53-robotics.github.io/Intro-To-Robotics/software/advanced-concepts/boomerang/
+        if (async) {
+            pros::Task task([this, x, y, heading, timeOut, params]() { boomerang(x, y, heading, timeOut, params, false);});
+            endMotion();
+            pros::delay(10);
+            return MotionResult::Running;   
+        }
+        //Set up
+        while (true) { 
+            //Math for carrot poit
+            double headingErr = atan2(dx, dy); //Between current pose and carrot points
+        }
+        motors.stop(BrakeMode::Brake);
+        endMotion();
+    }
+
     // Drives to (x, y): pure pursuit by default, or turn-then-drive if
     // usePurePursuit is false.
     MotionResult driveToPoint(double x, double y, int turnTimeout, int driveTimeout, 
@@ -764,17 +790,26 @@ public:
         }
         
         path.setStart(pose.x, pose.y);
-        PurePursuit pp(path);
+        if (!path.valid()) {motors.stop(BrakeMode::Brake); endMotion(); return MotionResult::Settled; }
+
+        std::pair<double, double> lastVolts = motors.getLastVolt();
+        double sL = lastVolts.first / pursuitSettings.voltTerms.kV, sR = lastVolts.second / pursuitSettings.voltTerms.kV;
+        int dir = params.reversed ? -1 : 1;
+
+        PurePursuit pp(path, dir * (sL + sR) / 2, sL, sR);
+
         double L = params.lookaheadDist < 0.0 ? std::fabs(pursuitSettings.lookaheadDist) : std::fabs(params.lookaheadDist);
         params.slewRate = params.slewRate < 0.0 ? std::fabs(defaultSlew) : std::fabs(params.slewRate);
 
         double measuredL = 0.0, lastTicksL = 0.0, measuredR = 0.0, lastTicksR = 0.0;
         uint32_t lastStampL = 0, lastStampR = 0;
         uint32_t now = pros::millis();
+
         const int stepMs = 10;
         const double dt = stepMs / 1000.0;
         double bestProgress = 0.0;
         uint32_t bestProgressTime = now, startTime = now;
+
         bool motionChain = false;
         MotionResult result = MotionResult::Timeout;
         
@@ -784,7 +819,7 @@ public:
                 break;
             }
             Pose pose = getPose();
-            double maxStep = params.slewRate / 120000.0 * 127.0;
+            double maxStep = params.slewRate / 12000.0 * 127.0;
             FollowReturn r = pp.step(pose, L, params.reversed, params.minSpeed, maxStep, pursuitSettings.endTolerance, dt);
             
             if (r.distToPath > pursuitSettings.lostDist) {
@@ -792,28 +827,36 @@ public:
                 break;
             }
             if (r.done) {
-                result = MotionResult::Settled;
+                motionChain = params.minSpeed > 0.0;
+                result = motionChain ? MotionResult::Chained : MotionResult::Settled;
                 break;
             }
-            if (params.earlyExitRange > 0 && path.length() - pp.progressS < params.earlyExitRange) {
+            if (params.minSpeed > 0.0 && params.earlyExitRange > 0 && path.length() - pp.progressS < params.earlyExitRange) {
                 result = MotionResult::Chained;
                 motionChain = true;
                 break;
             }
-            if(pp.progressS >= bestProgress + pursuitSettings.stuckDist) {
+            if (pp.progressS >= bestProgress + pursuitSettings.stuckDist) {
                 bestProgress = pp.progressS;
                 bestProgressTime = now;
             }
-            double leftVel = getActualSpeed(*motors.left, 0.4, measuredL, lastTicksL, lastStampL);
-            double rightVel = getActualSpeed(*motors.right, 0.4, measuredR, lastTicksR, lastStampR);
-            double leftV = speedToVoltage(leftVel, r.wheels.leftAccel, measuredL, pursuitSettings.voltTerms);
-            double rightV = speedToVoltage(rightVel, r.wheels.rightAccel, measuredR, pursuitSettings.voltTerms);
+            else if (r.pivoting && now - startTime < 1500){
+                bestProgressTime = now;
+            }
+            else if (now - bestProgressTime > (uint32_t)pursuitSettings.stuckMs) {
+                result = MotionResult::Stuck;
+                break;
+            }
+            getActualSpeed(*motors.left, pursuitSettings.speedAlpha, measuredL, lastTicksL, lastStampL);
+            getActualSpeed(*motors.right, pursuitSettings.speedAlpha, measuredR, lastTicksR, lastStampR);
+            double leftV = speedToVoltage(r.wheels.leftVel, r.wheels.leftAccel, measuredL, pursuitSettings.voltTerms);
+            double rightV = speedToVoltage(r.wheels.rightVel, r.wheels.rightAccel, measuredR, pursuitSettings.voltTerms);
             
             motors.setVoltage(leftV, rightV);
             progress = pp.progressS;
             pros::Task::delay_until(&now, stepMs);
         }
-        if(!motionChain) motors.setBrakeMode(BrakeMode::Brake);
+        if(!motionChain) motors.stop(BrakeMode::Brake);
         endMotion();
         return result;
     }
@@ -901,9 +944,6 @@ private:
 
     bool odomTaskStarted = false;
     std::atomic<bool> cancelRequested{false};
-
-    // Optional if not using Pure Pursuit
-    double topRpm; // Pure Pursuit uses this value. Tune by calling tuneTopSpeed() before making autonomous with Pure Pursuit
 
     // //Asymetrical slew
     double slew(double target, double prev, double maxDelta) const{
