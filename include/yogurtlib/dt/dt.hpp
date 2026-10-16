@@ -109,6 +109,7 @@ struct SwingToHeadingParams {
 struct BoomParams {
     double maxVolt = -1.0;
     double minVolt = 0.0;
+    double lead = 0.5;
     bool reversed = false;
     double earlyExitRange = 0.0;
     double slewRate = -1.0;
@@ -336,7 +337,7 @@ public:
             double turnOut = angularPID.calculateError(headErr, dt);
             
             if (std::fabs(distErr) > lateralKsThreshold) driveOut += std::copysign(lateralKs, distErr);
-            driveOut = clampd(driveOut, -maxV, maxV);
+            driveOut = std::clamp(driveOut, -maxV, maxV);
             if (minV > 0.0 && fabs(driveOut) < minV) driveOut = copysign(minV, distErr);
             
             //Desaturation
@@ -411,7 +412,7 @@ public:
 
             double out = turnPID.calculateError(err, dt);
             if (std::fabs(err) > turnKsThreshold) out += std::copysign(turnKs, err);
-            out = clampd(out, -maxV, maxV);
+            out = std::clamp(out, -maxV, maxV);
             if (minV > 0.0 && fabs(out) < minV) out = copysign(minV, err);
             double leftV = limitOutput(-out, prevL, -maxV, maxV, params.slewRate);
             double rightV = limitOutput(out, prevR, -maxV, maxV, params.slewRate);
@@ -503,7 +504,7 @@ public:
             //FLKJHDSLKFJLJ NOT WORKING
             double out = swingPID.calculateError(err, dt);
             if (std::fabs(err) > swingKsThreshold) out += std::copysign(swingKs, err);
-            out = clampd(out, -maxV, maxV);
+            out = std::clamp(out, -maxV, maxV);
             if (minV > 0.0 && fabs(out) < minV) out = copysign(minV, err);
             double leftV = leftSidePivot ? limitOutput(-out, prevL, -maxV, maxV, params.slewRate) : limitOutput(0.0, prevL, -maxV, maxV, params.slewRate);
             double rightV = leftSidePivot ? limitOutput(0.0, prevR, -maxV, maxV, params.slewRate) : limitOutput(out, prevR, -maxV, maxV, params.slewRate);
@@ -518,22 +519,96 @@ public:
         return result;
     }
 
-    MotionResult boomerang(double x, double y, double heading, double timeOut, BoomParams params, bool async = false) {
+    MotionResult boomerang(double x, double y, double heading, 
+                           double timeOutMs, BoomParams params, bool async = false) {
         requestMotion();
-        // /https://area-53-robotics.github.io/Intro-To-Robotics/software/advanced-concepts/boomerang/
         if (async) {
-            pros::Task task([this, x, y, heading, timeOut, params]() { boomerang(x, y, heading, timeOut, params, false);});
+            pros::Task task([this, x, y, heading, timeOutMs, params]() { boomerang(x, y, heading, timeOutMs, params, false);});
             endMotion();
             pros::delay(10);
             return MotionResult::Running;   
         }
-        //Set up
-        while (true) { 
-            //Math for carrot poit
-            double headingErr = atan2(dx, dy); //Between current pose and carrot points
+
+        if (params.maxVolt < 0.0) params.maxVolt = maxVoltage;
+        if (params.slewRate < 0.0) params.slewRate = defaultSlew;
+        
+        drivePID.reset();
+        angularPID.reset();
+        driveSettle.reset();
+
+        auto [prevL, prevR] = motors.getLastVolt();
+        double minV = fabs(params.minVolt), maxV = fabs(params.maxVolt);
+        double lastX = pose.x, lastY = pose.y;
+        int dir = params.reversed ? -1 : 1;
+        params.lead = std::clamp(params.lead, 0.0, 1.0);
+        double endX = pose.x - x, endY = pose.y - y;
+        double h = std::hypot(endX, endY);
+        
+        MotionResult result = MotionResult::Timeout;
+        int elapsed = 0;
+        const int stepMs = 10;
+        const double dt = stepMs / 1000.0;
+        std::uint32_t prevTime = pros::millis();
+
+        bool motionChain = false;
+
+        while (elapsed < timeOutMs) { 
+            if (cancelRequested.load() || pros::competition::is_disabled()){
+                result = MotionResult::Cancelled;
+                break;
+            }
+            //Update progress:
+            if (!progressPaused) progress = progress + std::hypot(pose.x - lastX, pose.y - lastY);
+            lastX = pose.x;
+            lastY = pose.y;
+
+            //Math for carrot point            
+            double carrotX = x - h * std::cos(heading) * params.lead;
+            double carrotY = y - h * std::sin(heading) * params.lead;
+
+            double dx = carrotX - pose.x, dy = carrotY - pose.y;
+            double carrotH = atan2(dy, dx); //Between current pose and carrot points
+            if (params.reversed) carrotH += 180.0;
+            double cosH = std::cos(deg2rad(carrotH));
+            double sinH = std::sin(deg2rad(carrotH));
+            double distErr = dx * cosH + dy * sinH;
+            double headErr = angleDiffDeg(carrotH, pose.theta);
+            
+            if (chainExit(distErr, dir, minV, params.earlyExitRange)) {
+                result = MotionResult::Chained;
+                motionChain = true;
+                break;
+            }
+
+            if(minV = 0 && driveSettle.update(distErr, dt)) {
+                result = MotionResult::Settled;
+                break;
+            }
+
+            double driveOut = drivePID.calculateError(distErr, dt);
+            double turnOut = angularPID.calculateError(headErr, dt);
+            
+            if(std::fabs(distErr) > lateralKsThreshold) driveOut += std::copysign(lateralKs, distErr);
+            driveOut = std::clamp(driveOut, -maxV, maxV);
+            if (minV > 0.0 && fabs(driveOut) < minV) driveOut = std::copysign(minV, distErr);
+            double leftV = driveOut - turnOut;
+            double rightV = driveOut + turnOut;
+            double m = std::max(fabs(leftV), fabs(rightV));
+            if (m > maxV) {
+                leftV *= maxV / m;
+                rightV *= maxV / m;
+            }
+            leftV = limitOutput(leftV, prevL, -maxV, maxV, params.slewRate);
+            rightV = limitOutput(rightV, prevR, -maxV, maxV, params.slewRate);
+            
+            motors.setVoltage(leftV, rightV);
+            pros::Task::delay_until(&prevTime, stepMs);
+            elapsed += stepMs;
         }
-        motors.stop(BrakeMode::Brake);
+
+        if(!motionChain) motors.stop(BrakeMode::Brake);
         endMotion();
+        return result;
     }
 
     // Drives to (x, y): pure pursuit by default, or turn-then-drive if
@@ -591,7 +666,7 @@ public:
             pros::delay(10);
             return MotionResult::Running;
         }
-        MotionResult result = driveToPoint(x, y, turnTimeout, driveTimeout,  {.usePurePursuit = params.usePurePursuit, .reversed = params.reversed, .maxVolt = params.maxVolt, .minVolt = params.minVolt, .earlyExitRange = params.earlyExitRange, .slewRate = params.slewRate}, false);
+        MotionResult result = driveToPoint(x, y, turnTimeout, driveTimeout,  {.maxVolt = params.maxVolt, .minVolt = params.minVolt, .usePurePursuit = params.usePurePursuit, .reversed = params.reversed, .earlyExitRange = params.earlyExitRange, .slewRate = params.slewRate}, false);
         if (result == MotionResult::Cancelled) {
             endMotion();
             return result;
@@ -740,9 +815,9 @@ public:
     
     //THIS WOULD BELONG IN PURSUIT.CPP and is a helper function
     // Gets the actual rpm of the motors using encoder units
-    double getActualSpeed (pros::MotorGroup& mg, double alpha, double& measured, double& lastTicks, uint32_t& lastStamp) {
+    double getActualSpeed (pros::MotorGroup& mg, double alpha, double& measured, double& lastTicks, std::uint32_t& lastStamp) {
 
-        uint32_t t = 0;
+        std::uint32_t t = 0;
         // Get raw direction flips with motor port flips
         std::vector<int32_t> pos = mg.get_raw_position_all(&t); // Always 3000 ticks per second at rated speed(no matter the cartridge)
         double ticksNow = 0.0;
@@ -802,13 +877,13 @@ public:
         params.slewRate = params.slewRate < 0.0 ? std::fabs(defaultSlew) : std::fabs(params.slewRate);
 
         double measuredL = 0.0, lastTicksL = 0.0, measuredR = 0.0, lastTicksR = 0.0;
-        uint32_t lastStampL = 0, lastStampR = 0;
-        uint32_t now = pros::millis();
+        std::uint32_t lastStampL = 0, lastStampR = 0;
+        std::uint32_t now = pros::millis();
 
         const int stepMs = 10;
         const double dt = stepMs / 1000.0;
         double bestProgress = 0.0;
-        uint32_t bestProgressTime = now, startTime = now;
+        std::uint32_t bestProgressTime = now, startTime = now;
 
         bool motionChain = false;
         MotionResult result = MotionResult::Timeout;
@@ -843,7 +918,7 @@ public:
             else if (r.pivoting && now - startTime < 1500){
                 bestProgressTime = now;
             }
-            else if (now - bestProgressTime > (uint32_t)pursuitSettings.stuckMs) {
+            else if (now - bestProgressTime > (std::uint32_t)pursuitSettings.stuckMs) {
                 result = MotionResult::Stuck;
                 break;
             }
@@ -961,7 +1036,7 @@ private:
     double limitOutput(double v, double& prev, double minV, double maxV, double slewRate) const {
         // double scale = batteryScale();
         // v = clampd(v * scale, minV, maxV);
-        v = clampd(v, minV, maxV);
+        v = std::clamp(v, minV, maxV);
         v = slew(v, prev, slewRate);
         prev = v;
         return v;

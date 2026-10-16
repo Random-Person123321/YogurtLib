@@ -32,10 +32,6 @@ inline double headingToSignedDeg(double h) {
   return wrapDeg(h);
 }
 
-inline double clampd(double v, double lo, double hi) {
-  return std::max(lo, std::min(hi, v));
-}
-
 inline double batteryScale() {
   // Scale outputs so behavior stays similar as battery sags
   int mv = pros::battery::get_voltage();      // typically up to ~12000
