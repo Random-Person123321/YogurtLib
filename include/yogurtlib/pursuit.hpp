@@ -1,8 +1,12 @@
 #pragma once
-// #include <vector>
-// #include <algorithm>
+
+#include <algorithm>
 #include "yogurtlib/pose.hpp"
 namespace yogurt{
+
+struct PathVec {
+    double first, second;
+};
 
 struct PathPoint {
     double x = 0.0, y = 0.0;
@@ -47,7 +51,7 @@ inline double slew(double target, double prev, double maxDelta) {
 
 class Path {
 private:
-    std::vector<std::pair<double, double>> waypoints;
+    std::vector<PathVec> waypoints; //Just uses x and y coordinates
     std::vector<PathPoint> pts;
     PathConfig configs;
     bool startReplaced = false;
@@ -132,7 +136,7 @@ private:
 
 public: //Const accepts written in lists like {{0, 0}, {10, 5}}
 
-    Path (const std::vector<std::pair<double, double>>& waypoints, const PathConfig& configs, double trackWidth) : 
+    Path (const std::vector<PathVec>& waypoints, const PathConfig& configs, double trackWidth) : 
           waypoints(waypoints), configs(configs), trackWidth(trackWidth) { build(); }
         
     void setStart(double x, double y){

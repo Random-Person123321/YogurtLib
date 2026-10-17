@@ -1,7 +1,14 @@
 #include "main.h"
 #include "yogurtlib/api.hpp"
-#include "yogurtlib/global.hpp"
 
+// yogurt::Drivetrain drivetrain;
+
+yogurt::UI uiobject;
+
+void classInit() {
+    // drivetrain.onCalibrated.push_back([](yogurt::Drivetrain& dt) {uiobject.screen_init(dt); });
+    // drivetrain.calibrate();
+}
 
 /**
  * Runs initialization code. This occurs as soon as the program is started.

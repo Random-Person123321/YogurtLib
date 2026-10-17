@@ -2,10 +2,10 @@
 #include "main.h"
 #include <atomic>
 #include <functional>
-#include "yogurtlib/odometry.hpp"
-#include "yogurtlib/dt/motors.hpp"
 #include "yogurtlib/control.hpp"
+#include "yogurtlib/odometry.hpp"
 #include "yogurtlib/pose.hpp"
+#include "yogurtlib/dt/motors.hpp"
 #include "yogurtlib/pursuit.hpp"
 #include "yogurtlib/misc.hpp"
 
@@ -109,7 +109,8 @@ struct SwingToHeadingParams {
 struct BoomParams {
     double maxVolt = -1.0;
     double minVolt = 0.0;
-    double lead = 0.5;
+    double lead = 0.2;
+    double closeDist = 7.0;
     bool reversed = false;
     double earlyExitRange = 0.0;
     double slewRate = -1.0;
@@ -222,12 +223,16 @@ public:
     void setHeadingCorrectionGains(double kp, double ki, double kd, double maxIntegral) {
         angularPID = PID(kp, ki, kd, maxIntegral);
     }
+    
+    void setBoomerangSettleGains(double errTol, double velTol, int settleMs) {
+        boomerangSettle = {errTol, velTol, settleMs};
+    }
 
     // ---- Setup ----
     std::vector<std::function<void(Drivetrain&)>> onCalibrated;
 
     // Blocking IMU reset + starts the odometry task. Call once from initialize().
-    void calibrate(Pose startPose = Pose(0, 0, 0)) {
+    void calibrate(Pose startPose = Pose(0, 0, 90)) {
         for (auto* imu : odom.imus.sensors) {
             imu->reset(false);
             pros::delay(10);
@@ -275,7 +280,7 @@ public:
     MotionResult driveStraight(double distanceInches, int timeoutMs, DriveParams params = {}, bool async = false) {
         requestMotion();
         if (async) {
-            pros::Task task([this, distanceInches, timeoutMs, params]() { driveStraight(distanceInches, timeoutMs, params, false); });
+            pros::Task task([this, distanceInches, timeoutMs, params]() {driveStraight(distanceInches, timeoutMs, params, false); });
             endMotion();
             pros::delay(10);
             return MotionResult::Running;
@@ -328,11 +333,10 @@ public:
                 break;
             }
             
-            if (minV == 0 && driveSettle.update(distErr, dt)) {
+            if (minV == 0.0 && driveSettle.update(distErr, dt)) {
                 result = MotionResult::Settled;
                 break;
             }
-
             double driveOut = drivePID.calculateError(distErr, dt);
             double turnOut = angularPID.calculateError(headErr, dt);
             
@@ -357,6 +361,7 @@ public:
         }
         if(!motionChain) motors.stop(BrakeMode::Brake);
         endMotion();
+        std::cout << entostr(result) << '\n';
         return result;
 
     }
@@ -449,9 +454,7 @@ public:
     // Pivots about one side only (the other side stays stopped) to face `targetDeg`.
     MotionResult swingToHeading(double targetDeg, int timeoutMs,
                                 bool leftSidePivot = true, SwingToHeadingParams params = {}, bool async = false) {
-        std::cout << "before\n";
         requestMotion();
-        std::cout << "after";
         if (async) {
             pros::Task task([this, targetDeg, timeoutMs, leftSidePivot, params]() { swingToHeading(targetDeg, timeoutMs, leftSidePivot, params, false);});
             endMotion();
@@ -478,7 +481,6 @@ public:
         std::uint32_t prevTime = pros::millis();
 
         bool motionChain = false;
-        std::cout << "before loop";
         while (time < timeoutMs) {
             if (cancelRequested.load() || pros::competition::is_disabled()) {
                 result = MotionResult::Cancelled;
@@ -520,7 +522,7 @@ public:
     }
 
     MotionResult boomerang(double x, double y, double heading, 
-                           double timeOutMs, BoomParams params, bool async = false) {
+                           double timeOutMs, BoomParams params = {}, bool async = false) {
         requestMotion();
         if (async) {
             pros::Task task([this, x, y, heading, timeOutMs, params]() { boomerang(x, y, heading, timeOutMs, params, false);});
@@ -533,16 +535,20 @@ public:
         if (params.slewRate < 0.0) params.slewRate = defaultSlew;
         
         drivePID.reset();
-        angularPID.reset();
-        driveSettle.reset();
+        turnPID.reset();
+        boomerangSettle.reset();
+        turnSettle.reset();
 
         auto [prevL, prevR] = motors.getLastVolt();
-        double minV = fabs(params.minVolt), maxV = fabs(params.maxVolt);
-        double lastX = pose.x, lastY = pose.y;
-        int dir = params.reversed ? -1 : 1;
+        double prevDrive = (prevL + prevR) / 2.0;
+
         params.lead = std::clamp(params.lead, 0.0, 1.0);
-        double endX = pose.x - x, endY = pose.y - y;
-        double h = std::hypot(endX, endY);
+        double minV = fabs(params.minVolt), maxV = fabs(params.maxVolt);
+        int dir = params.reversed ? -1 : 1;
+        
+        bool close = false;
+        int stillMs = 0;
+        double lastX = pose.x, lastY = pose.y, lastTheta = pose.theta;
         
         MotionResult result = MotionResult::Timeout;
         int elapsed = 0;
@@ -557,40 +563,76 @@ public:
                 result = MotionResult::Cancelled;
                 break;
             }
+            Pose p = pose;
+            double stepDist = std::hypot(p.x - lastX, p.y - lastY);
+            double stepTurn = std::fabs(angleDiffDeg(p.theta, lastTheta));
             //Update progress:
-            if (!progressPaused) progress = progress + std::hypot(pose.x - lastX, pose.y - lastY);
-            lastX = pose.x;
-            lastY = pose.y;
-
-            //Math for carrot point            
-            double carrotX = x - h * std::cos(heading) * params.lead;
-            double carrotY = y - h * std::sin(heading) * params.lead;
-
-            double dx = carrotX - pose.x, dy = carrotY - pose.y;
-            double carrotH = atan2(dy, dx); //Between current pose and carrot points
-            if (params.reversed) carrotH += 180.0;
-            double cosH = std::cos(deg2rad(carrotH));
-            double sinH = std::sin(deg2rad(carrotH));
-            double distErr = dx * cosH + dy * sinH;
-            double headErr = angleDiffDeg(carrotH, pose.theta);
+            if (!progressPaused) progress = progress + stepDist;
             
-            if (chainExit(distErr, dir, minV, params.earlyExitRange)) {
+            lastX = p.x;
+            lastY = p.y;
+            lastTheta = p.theta;
+
+            double dx = x - p.x, dy = y - p.y;
+            double d = std::hypot(dx, dy);
+            if (d < params.closeDist) close = true;
+
+            //Math for carrot point 
+            double travelDeg = heading + (params.reversed ? 180.0 : 0.0);         
+            double travelRad = deg2rad(travelDeg); 
+            double carrotX = close ? x : x - d * params.lead * std::cos(travelRad);
+            double carrotY = close ? y : y - d * params.lead * std::sin(travelRad);
+
+            double robotDeg = p.theta + (params.reversed ? 180.0 : 0.0);
+            double robotRad = deg2rad(robotDeg);
+
+            double carrotDx = carrotX - p.x, carrotDy = carrotY - p.y;
+            double wantDeg = close ? travelDeg : rad2deg(std::atan2(carrotDy, carrotDx));
+            double headErr = angleDiffDeg(wantDeg, robotDeg);
+            
+            int sign = std::cos(deg2rad(headErr)) > 0 ? 1 : -1;
+            double carrotDist = std::hypot(carrotDx, carrotDy);
+            double fwd = close ? dx * std::cos(robotRad) + dy * std::sin(robotRad) : carrotDist * sign;
+            double distErr = dir * fwd; 
+
+            bool driveDone = boomerangSettle.update(distErr, dt);
+            bool turnDone = turnSettle.update(headErr, dt);            
+
+            //Math for motionchaining
+            double along = dx * std::cos(travelRad) + dy * std::sin(travelRad);
+            
+            if (close && minV > 0.0 && along < params.earlyExitRange) {
                 result = MotionResult::Chained;
                 motionChain = true;
                 break;
             }
 
-            if(minV = 0 && driveSettle.update(distErr, dt)) {
+            if (minV == 0.0 && close && driveDone && turnDone) {
                 result = MotionResult::Settled;
                 break;
             }
-
+            if (close && stepDist < 0.01 && stepTurn < 0.05) stillMs += stepMs;
+            else stillMs = 0;
+            if (minV == 0.0 && stillMs >= 250) {
+                result = MotionResult::Stuck;
+                break;
+            }
             double driveOut = drivePID.calculateError(distErr, dt);
-            double turnOut = angularPID.calculateError(headErr, dt);
+            double turnOut = turnPID.calculateError(headErr, dt);
             
             if(std::fabs(distErr) > lateralKsThreshold) driveOut += std::copysign(lateralKs, distErr);
+            if(close && std::fabs(headErr) > turnKsThreshold) turnOut += std::copysign(turnKs, headErr);
             driveOut = std::clamp(driveOut, -maxV, maxV);
+            turnOut = std::clamp(turnOut, -maxV, maxV);
+            double over = std::fabs(driveOut) + std::fabs(turnOut) - maxV;
+            if (over > 0.0) driveOut -= std::copysign(over, driveOut);
             if (minV > 0.0 && fabs(driveOut) < minV) driveOut = std::copysign(minV, distErr);
+            if (!close) {
+                if (dir > 0) driveOut = std::max(driveOut, 0.0);
+                else if (dir < 0) driveOut = std::min(driveOut, 0.0);
+                driveOut = slew(driveOut, prevDrive, params.slewRate);
+            }
+
             double leftV = driveOut - turnOut;
             double rightV = driveOut + turnOut;
             double m = std::max(fabs(leftV), fabs(rightV));
@@ -598,9 +640,9 @@ public:
                 leftV *= maxV / m;
                 rightV *= maxV / m;
             }
-            leftV = limitOutput(leftV, prevL, -maxV, maxV, params.slewRate);
-            rightV = limitOutput(rightV, prevR, -maxV, maxV, params.slewRate);
-            
+             
+            prevDrive = driveOut;
+
             motors.setVoltage(leftV, rightV);
             pros::Task::delay_until(&prevTime, stepMs);
             elapsed += stepMs;
@@ -852,6 +894,7 @@ public:
     }
 
     MotionResult curve(Path path, int timeoutMs, FollowParams params = {}, bool async = false) {
+        int cnt = 0;
         requestMotion();
         if(async){
             pros::Task task([this, path, timeoutMs, params]() { curve(path, timeoutMs, params, false);});
@@ -926,7 +969,11 @@ public:
             getActualSpeed(*motors.right, pursuitSettings.speedAlpha, measuredR, lastTicksR, lastStampR);
             double leftV = speedToVoltage(r.wheels.leftVel, r.wheels.leftAccel, measuredL, pursuitSettings.voltTerms);
             double rightV = speedToVoltage(r.wheels.rightVel, r.wheels.rightAccel, measuredR, pursuitSettings.voltTerms);
-            
+            cnt++;
+            if (cnt == 10) {
+                cnt = 0;
+            printf("Dist: %.1lf, S: %.1lf, Vel: %.1lf, measure: %.1lf, leftV: %.1lf\n", r.distToPath, pp.progressS, r.wheels.leftVel, measuredL, leftV);
+            }
             motors.setVoltage(leftV, rightV);
             progress = pp.progressS;
             pros::Task::delay_until(&now, stepMs);
@@ -1011,6 +1058,7 @@ private:
     Settle driveSettle;// For drives
     Settle turnSettle; // For turns
     Settle swingSettle; //For swinging turns
+    Settle boomerangSettle{2.0, 0.5, 200}; //For boomerang motions
 
     Pose pose{0.0, 0.0, 0.0};
     double lastVertTicks = 0.0;
@@ -1034,8 +1082,6 @@ private:
     // Applies battery-voltage scaling, a slew-rate limit, and clamping — the
     // sequence every motor command in this class goes through before it's sent.
     double limitOutput(double v, double& prev, double minV, double maxV, double slewRate) const {
-        // double scale = batteryScale();
-        // v = clampd(v * scale, minV, maxV);
         v = std::clamp(v, minV, maxV);
         v = slew(v, prev, slewRate);
         prev = v;
@@ -1242,6 +1288,7 @@ private:
     }
     
     void endMotion(){
+        std::cout << "endMotion\n";
        if(--motionDepth == 0) motionRunning = false;
        mutex.give();
     }

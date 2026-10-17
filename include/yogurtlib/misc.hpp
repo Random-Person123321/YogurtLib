@@ -31,10 +31,3 @@ inline double headingToSignedDeg(double h) {
   if (h > 180.0) h -= 360.0;
   return wrapDeg(h);
 }
-
-inline double batteryScale() {
-  // Scale outputs so behavior stays similar as battery sags
-  int mv = pros::battery::get_voltage();      // typically up to ~12000
-  if (mv < 9000) mv = 9000;                  // avoid extreme scaling
-  return 12000.0 / (double)mv;
-}

@@ -6,9 +6,10 @@
 #include <vector>
 
 //Yogurtlib includes
+#include "yogurtlib/pose.hpp"
+#include "yogurtlib/control.hpp"
+#include "yogurtlib/dt/motors.hpp"
+#include "yogurtlib/pursuit.hpp"
 #include "yogurtlib/dt/dt.hpp"
 #include "yogurtlib/mcl.hpp"
-#include "yogurtlib/pose.hpp"
-#include "yogurtlib/dt/motors.hpp"
 #include "yogurtlib/UI.hpp"
-#include "yogurtlib/global.hpp"
