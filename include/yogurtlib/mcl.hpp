@@ -21,4 +21,4 @@ struct particle_data {
 	double x, y, h, weight;
 };
 
-std::vector<particle_data> particles;
+// std::vector<particle_data> particles;

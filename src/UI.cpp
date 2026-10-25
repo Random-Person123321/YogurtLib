@@ -260,14 +260,21 @@ void yogurt::UI::update_data(lv_timer_t* t){
     if (do_data_updates == true){
         char buf[13];
 
-        snprintf(buf, sizeof(buf), "IMU1: %.2f", drivetrainRef->odom.imus.sensors[0]->get_heading());
-        lv_label_set_text(imu1_lbl, buf);
+        if (drivetrainRef->odom.imus.sensors.size() >= 1){
+            snprintf(buf, sizeof(buf), "IMU1: %.2f", drivetrainRef->odom.imus.sensors[0]->get_heading());
+            lv_label_set_text(imu1_lbl, buf);
+        }
         
-        snprintf(buf, sizeof(buf), "IMU2: %.2f", drivetrainRef->odom.imus.sensors[1]->get_heading());
-        lv_label_set_text(imu2_lbl, buf);
+        if (drivetrainRef->odom.imus.sensors.size() >= 2){
+            snprintf(buf, sizeof(buf), "IMU2: %.2f", drivetrainRef->odom.imus.sensors[1]->get_heading());
+            lv_label_set_text(imu2_lbl, buf);
+        }
         
-        snprintf(buf, sizeof(buf), "IMU3: %.2f", drivetrainRef->odom.imus.sensors[2]->get_heading());
-        lv_label_set_text(imu3_lbl, buf);
+        if (drivetrainRef->odom.imus.sensors.size() >= 3){
+            snprintf(buf, sizeof(buf), "IMU3: %.2f", drivetrainRef->odom.imus.sensors[2]->get_heading());
+            lv_label_set_text(imu3_lbl, buf);
+        }
+
 
         snprintf(buf, sizeof(buf), "X: %.2f", drivetrainRef->getPose().x);
         lv_label_set_text(pose_x_lbl, buf);

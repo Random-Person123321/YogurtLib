@@ -18,7 +18,8 @@ struct PathConfig {
     double maxSpeed = 127.0; //max speed the robot drives, out of 127
     double decelDist = 24.0; //Inches that allows the robot to slow from full speed to 0. Smaller number means braking later
     double turnK = 5.0; //speed(0-127) per inch of turn radius. How much to slow down by during tight curves/turns
-    double maxPtSpacing = 3.0; // If any segment is more than 3" apart, the path build() function will inject more, useful for driveToPoint function where there is only two largely space points
+    double maxPtSpacing = 3.0; /* If any segment is more than 3" apart, the path build() function will inject more.
+                                  Useful for driveToPoint function where there is only two largely space points */
 };
 
 struct WheelTargets {

@@ -109,7 +109,8 @@ struct SwingToHeadingParams {
 struct BoomParams {
     double maxVolt = -1.0;
     double minVolt = 0.0;
-    double lead = 0.2;
+    double lead = 0.6;
+    double curveK = 0.0; //Tune if your robot is drifting out too much sideways during call
     double closeDist = 7.0;
     bool reversed = false;
     double earlyExitRange = 0.0;
@@ -199,7 +200,11 @@ public:
     //Below this, no push is added to avoids a jolt right as a motion is settling in.
     double lateralKsThreshold = 1.0;
     double turnKsThreshold = 1.5;
-    double swingKsThreshold = 2.0;
+    double swingKsThreshold = 1.5;
+
+    double boomerangCloseMinVolt = 5670.0;
+    double driveToMinVolt = 3000.0; //210E NEEDS TO TUNE THIS!
+    std::pair<double, double> driveToEarlyExit = {7.0, 4.0}; //TUNE THIS ALSO!!!
 
     // Only the pieces with no sane default are constructor arguments: the
     // physical hardware, and the three gain sets a Drivetrain can't do its
@@ -224,8 +229,9 @@ public:
         angularPID = PID(kp, ki, kd, maxIntegral);
     }
     
-    void setBoomerangSettleGains(double errTol, double velTol, int settleMs) {
-        boomerangSettle = {errTol, velTol, settleMs};
+    void setBoomerangSettleGains(Settle drive = {1.0, 2.5, 200}, Settle turn = {1.5, 8.0, 200}) {
+        boomerangDriveSettle = drive;
+        boomerangTurnSettle = turn;
     }
 
     // ---- Setup ----
@@ -361,7 +367,6 @@ public:
         }
         if(!motionChain) motors.stop(BrakeMode::Brake);
         endMotion();
-        std::cout << entostr(result) << '\n';
         return result;
 
     }
@@ -410,7 +415,7 @@ public:
                 motionChain = true;
                 break;
             }
-            if (turnSettle.update(err, dt)) {
+            if (minV == 0.0 && turnSettle.update(err, dt)) {
                     result = MotionResult::Settled;
                     break;
             }
@@ -446,7 +451,7 @@ public:
         
         double targetHeading = pose.angleTo(Pose(x, y));
         if (params.reversed) targetHeading = wrapDeg(targetHeading + 180.0);
-        MotionResult result = turnToHeading(targetHeading, timeoutMs, {.maxVolt = params.maxVolt, .slewRate =params.slewRate}, false);
+        MotionResult result = turnToHeading(targetHeading, timeoutMs, {.maxVolt = params.maxVolt, .minVolt = params.minVolt, .earlyExitRange = params.earlyExitRange, .slewRate = params.slewRate}, false);
         endMotion();
         return result;
     }
@@ -469,6 +474,10 @@ public:
 
         swingPID.reset();
         swingSettle.reset();
+
+        auto oldBrakeMode = motors.left->get_brake_mode();
+        if (leftSidePivot) motors.right->set_brake_mode_all(toProsBrakeMode(BrakeMode::Hold));
+        else motors.left->set_brake_mode_all(toProsBrakeMode(BrakeMode::Hold));
 
         auto [prevL, prevR] = motors.getLastVolt();
         double minV = fabs(params.minVolt), maxV = fabs(params.maxVolt);
@@ -503,18 +512,21 @@ public:
                 break;
             }
 
-            //FLKJHDSLKFJLJ NOT WORKING
             double out = swingPID.calculateError(err, dt);
             if (std::fabs(err) > swingKsThreshold) out += std::copysign(swingKs, err);
             out = std::clamp(out, -maxV, maxV);
             if (minV > 0.0 && fabs(out) < minV) out = copysign(minV, err);
-            double leftV = leftSidePivot ? limitOutput(-out, prevL, -maxV, maxV, params.slewRate) : limitOutput(0.0, prevL, -maxV, maxV, params.slewRate);
-            double rightV = leftSidePivot ? limitOutput(0.0, prevR, -maxV, maxV, params.slewRate) : limitOutput(out, prevR, -maxV, maxV, params.slewRate);
+            double leftV = leftSidePivot ? limitOutput(-out, prevL, -maxV, maxV, params.slewRate) : 0.0 /* limitOutput(0.0, prevL, -maxV, maxV, params.slewRate) */;
+            double rightV = leftSidePivot ? 0.0 /* limitOutput(0.0, prevR, -maxV, maxV, params.slewRate) */ : limitOutput(out, prevR, -maxV, maxV, params.slewRate);
+        
             motors.setVoltage(leftV, rightV);
-
+            if (leftSidePivot) motors.right->brake();
+            else motors.left->brake();
             pros::Task::delay_until(&prevTime, stepMs);
             time += stepMs;
         }
+        if (leftSidePivot) motors.right->set_brake_mode_all(oldBrakeMode);
+        else motors.left->set_brake_mode_all(oldBrakeMode);
 
         if(!motionChain) motors.stop(BrakeMode::Brake);
         endMotion();
@@ -536,8 +548,8 @@ public:
         
         drivePID.reset();
         turnPID.reset();
-        boomerangSettle.reset();
-        turnSettle.reset();
+        boomerangDriveSettle.reset();
+        boomerangTurnSettle.reset();
 
         auto [prevL, prevR] = motors.getLastVolt();
         double prevDrive = (prevL + prevR) / 2.0;
@@ -575,7 +587,10 @@ public:
 
             double dx = x - p.x, dy = y - p.y;
             double d = std::hypot(dx, dy);
-            if (d < params.closeDist) close = true;
+            if (!close && d < params.closeDist) {
+                close = true;
+                maxV = std::min(maxV, std::max(std::fabs(prevDrive), boomerangCloseMinVolt));
+            }
 
             //Math for carrot point 
             double travelDeg = heading + (params.reversed ? 180.0 : 0.0);         
@@ -595,8 +610,8 @@ public:
             double fwd = close ? dx * std::cos(robotRad) + dy * std::sin(robotRad) : carrotDist * sign;
             double distErr = dir * fwd; 
 
-            bool driveDone = boomerangSettle.update(distErr, dt);
-            bool turnDone = turnSettle.update(headErr, dt);            
+            bool driveDone = boomerangDriveSettle.update(distErr, dt);
+            bool turnDone = boomerangTurnSettle.update(headErr, dt);            
 
             //Math for motionchaining
             double along = dx * std::cos(travelRad) + dy * std::sin(travelRad);
@@ -619,9 +634,18 @@ public:
             }
             double driveOut = drivePID.calculateError(distErr, dt);
             double turnOut = turnPID.calculateError(headErr, dt);
+
             
             if(std::fabs(distErr) > lateralKsThreshold) driveOut += std::copysign(lateralKs, distErr);
             if(close && std::fabs(headErr) > turnKsThreshold) turnOut += std::copysign(turnKs, headErr);
+            if (!close && params.curveK > 0.0) {
+                double s = std::fabs(std::sin(deg2rad(headErr)));
+                if (s >= 1e-3) {
+                    double radius = carrotDist / (2.0 * s);
+                    double limit = params.curveK * std::sqrt(radius);
+                    driveOut = std::clamp(driveOut, -limit, limit);
+                }
+            }
             driveOut = std::clamp(driveOut, -maxV, maxV);
             turnOut = std::clamp(turnOut, -maxV, maxV);
             double over = std::fabs(driveOut) + std::fabs(turnOut) - maxV;
@@ -681,19 +705,22 @@ public:
             targetHeading = wrapDeg(targetHeading + 180.0);
             sign = -1;
         }
+
+        auto check = [](yogurt::MotionResult r) { //Lambda function to help us check motion state
+            return (r == MotionResult::Chained) || (r == MotionResult::Settled);
+        };
         progressPaused = true;
-        if (turnToHeading(targetHeading, turnTimeout, {.maxVolt = params.maxVolt, .minVolt = params.minVolt, .earlyExitRange = params.earlyExitRange, .slewRate = params.slewRate}, false) == MotionResult::Cancelled) {
-            endMotion();
-            return MotionResult::Cancelled;
-        }
+        auto turnR = turnToHeading(targetHeading, turnTimeout, {.maxVolt = params.maxVolt, .minVolt = driveToMinVolt, .earlyExitRange = driveToEarlyExit.first, .slewRate = params.slewRate}, false);
+        
+        if (turnR == MotionResult::Cancelled) { endMotion(); return turnR; }
+
         progressPaused = false;
         double dist = pose.distanceTo(Pose(x, y));
-        if (driveStraight(sign * dist, driveTimeout, {.maxVolt = params.maxVolt, .minVolt = params.minVolt, .earlyExitRange = params.earlyExitRange, .slewRate = params.slewRate}, false) == MotionResult::Cancelled) {
-            endMotion();
-            return MotionResult::Cancelled;
-        }
+        double off = angleDiffDeg(targetHeading, pose.theta);
+        auto driveR = driveStraight(sign * dist, driveTimeout, {.maxVolt = params.maxVolt, .minVolt = params.minVolt, .headingOffset = off, .earlyExitRange = params.earlyExitRange, .slewRate = params.slewRate}, false);
+
         endMotion();
-        return MotionResult::Settled;
+        return !check(driveR)? driveR : (!check(turnR)? turnR : driveR); //If does not pass error check, return error otherwise normal output
     }
 
 
@@ -708,19 +735,19 @@ public:
             pros::delay(10);
             return MotionResult::Running;
         }
-        MotionResult result = driveToPoint(x, y, turnTimeout, driveTimeout,  {.maxVolt = params.maxVolt, .minVolt = params.minVolt, .usePurePursuit = params.usePurePursuit, .reversed = params.reversed, .earlyExitRange = params.earlyExitRange, .slewRate = params.slewRate}, false);
-        if (result == MotionResult::Cancelled) {
-            endMotion();
-            return result;
-        }
+
+        auto check = [](yogurt::MotionResult r) { //Lambda function to help us check motion state
+            return (r == MotionResult::Chained) || (r == MotionResult::Settled);
+        };
+
+        MotionResult pointR = driveToPoint(x, y, turnTimeout, driveTimeout,  {.maxVolt = params.maxVolt, .minVolt = driveToMinVolt, .usePurePursuit = params.usePurePursuit, .reversed = params.reversed, .earlyExitRange = driveToEarlyExit.second, .slewRate = params.slewRate}, false);
+        if (pointR == MotionResult::Cancelled) { endMotion(); return pointR; }
 
         progressPaused = true;
-        if (turnToHeading(headingDeg, turnTimeout, {.maxVolt = params.maxVolt, .minVolt = params.minVolt, .earlyExitRange = params.earlyExitRange, .slewRate = params.slewRate}, false) == MotionResult::Cancelled) {
-            endMotion();
-            return MotionResult::Cancelled;
-        }
+        auto turnR = turnToHeading(headingDeg, turnTimeout, {.maxVolt = params.maxVolt, .minVolt = params.minVolt, .earlyExitRange = params.earlyExitRange, .slewRate = params.slewRate}, false);
+        
         endMotion();
-        return result;
+        return !check(pointR)? pointR : (!check(turnR)? turnR : pointR);
     }
 
     
@@ -1058,7 +1085,8 @@ private:
     Settle driveSettle;// For drives
     Settle turnSettle; // For turns
     Settle swingSettle; //For swinging turns
-    Settle boomerangSettle{2.0, 0.5, 200}; //For boomerang motions
+    Settle boomerangDriveSettle{1.0, 2.5, 200}; //For boomerang drive motions
+    Settle boomerangTurnSettle{1.5, 8.0, 200};  //For boomerang turn motions
 
     Pose pose{0.0, 0.0, 0.0};
     double lastVertTicks = 0.0;
