@@ -37,7 +37,9 @@ public:
         : left(left), right(right),
           wheelDiameter(wheelDiameter) {}
 
-    // Direct motor voltage, in mV [-12000, 12000].
+    /**
+     * @brief Set motor voltages for both sides of the drivetrain
+    */
     void setVoltage(double leftMv, double rightMv) const {
         left->move_voltage((std::int32_t)leftMv);
         right->move_voltage((std::int32_t)rightMv);
@@ -45,12 +47,37 @@ public:
         lastR = rightMv;
     }
 
-    // Arcade drive. power/turn in motor "move" units [-127, 127].
+    /**
+    /**
+     * @brief Tank driver controls 
+     * 
+     *  Example code:
+     * 
+     * @code
+    void opcontroll() {
+        while(true){
+            drivetrain.motors.arcade(master.get_analog(analog_left_Y), 
+                                   master.get_analog(analog_right_X));
+        }
+    } @endcode
+    */
     void arcade(double power, double turn) const {
         tank(power + turn, power - turn);
     }
 
-    // Tank drive. left/right power in motor "move" units [-127, 127].
+    /**
+     * @brief Tank driver controls 
+     * 
+     *  Example code:
+     * 
+     * @code
+    void opcontroll() {
+        while(true){
+            drivetrain.motors.tank(master.get_analog(analog_left_Y), 
+                                   master.get_analog(analog_right_Y));
+        }
+    } @endcode
+    */
     void tank(double leftPower, double rightPower) const {
         left->move(std::clamp(leftPower, -127.0, 127.0));
         right->move(std::clamp(rightPower, -127.0, 127.0));

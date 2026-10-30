@@ -1,6 +1,4 @@
 #pragma once
-
-// namespace pros { class Distance; }
 #include "main.h"
 
 void update_Particle_Num();
@@ -17,8 +15,7 @@ void calc_Pose();
 
 void calc_Likelyhood();
 
-struct particle_data {
-	double x, y, h, weight;
-};
-
+// struct particle_data {
+// 	double x, y, h, weight;
+// };
 // std::vector<particle_data> particles;

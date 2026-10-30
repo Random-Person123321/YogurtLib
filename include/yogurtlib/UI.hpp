@@ -76,7 +76,7 @@ class UI {
 public:
 
     /**
-     * @brief Initializes the screen, call it in init, loads everything other than the error screen 
+     * @brief Initializes the screen, call it in init
      * 
      *  Example code:
      * 
@@ -87,7 +87,20 @@ public:
      */
     void screen_init(Drivetrain& dt);
 
+    /**
+     * @brief The list of all autons, each auton requires:
+     *
+     * - A name to be displayed (Eg. "Blue")
+     *
+     * - A file location on the SD card (Eg. "S:/autons/blue.bin")
+     *
+     * - If it should be selected by default for a program slot (True/False)
+    */
     static std::vector <AutoSelection> auton_list;
+    
+    /**
+     * @brief The selected auto from the auton selector list, use this in autonomus to determine what auto to run
+    */
     static int selected_auto;
 
 };

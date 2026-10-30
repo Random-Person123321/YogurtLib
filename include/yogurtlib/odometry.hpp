@@ -40,7 +40,11 @@ public:
 
     double lastFused = 0.0;
     double totalHeading = 0.0;
-    
+    /**
+     * @brief !!!!! UNTESTED !!!!!
+     *
+     * The funtion that (should be able) to take any number of IMU's and filter them, than return the delta
+    */
     double fuseIMUs(double time = 10.0) {
         double maxDegMs = maxTurnDelta / 1000.0 * time;
         double median = 0.0;
