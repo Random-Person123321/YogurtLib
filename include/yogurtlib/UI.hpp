@@ -78,12 +78,13 @@ public:
     /**
      * @brief Initializes the screen, call it in init
      * 
-     *  Example code:
+     *  ### Example Code:
      * 
-     * @code
-    void initialize() {
-        uiobject.screen_init();
-    } @endcode
+     * ```
+     * void initialize() {
+     *   uiobject.screen_init(drivetrain);
+     * } 
+     * ```
      */
     void screen_init(Drivetrain& dt);
 
@@ -95,6 +96,10 @@ public:
      * - A file location on the SD card (Eg. "S:/autons/blue.bin")
      *
      * - If it should be selected by default for a program slot (True/False)
+     * 
+     * ### Example Code:
+     *
+     * ```uiobject.auton_list.push_back( {"Blue", "S:/autons/blue.bin", false} );```
     */
     static std::vector <AutoSelection> auton_list;
     

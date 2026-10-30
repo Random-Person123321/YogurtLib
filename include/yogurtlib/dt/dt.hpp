@@ -211,61 +211,291 @@ public:
                ControllerSettings driveSettings, ControllerSettings turnSettings, //Drive for driveStraight, turn for turnning
                ControllerSettings swingSettings); //swing for sing settings
 
-    // PID for setting the heading correction gains in driveStraight 
-    // for maintaining a straight path(or intentional angling)
-    // Call it once during setup if you want driveStraight to hold heading. 
-    // Tune values before hand until drive is consistently straight and final heading it within 0.2 degrees of the start.
+    /**
+     * @brief Set the PID values for heading correction with the driveStraight movement, used for maintaing straight drives or intentional angling
+     * 
+     * Tune until drive is consistently straight and the final heading is within 0.2 degress of the start
+     *
+     * @param kP mV per unit of error within a 10 ms timespan
+     * @param kI mV based on accumulated error over time; Only use if you dseire to hold a position for long periods of time
+     * @param kD mV per unit of error to counteract kP over time
+     * @param maxIntergral the maximum windup of kI in mV
+     *
+     * ### Example Code:
+     * 
+     *```cpp
+     * void intitalize(){
+     *    drivetrain.setHeadingCorrectionGains(120.0, 0.0, 6.0, 5.0);
+     * }
+     * ```
+    */
     void setHeadingCorrectionGains(double kp, double ki, double kd, double maxIntegral);
     
-    void setBoomerangSettleGains(Settle drive = {1.0, 2.5, 200}, Settle turn = {1.5, 8.0, 200});
+    /**
+     * @brief Set the settle values for Boomerang movements, both driving and turning
+     * 
+     * Tune the values to reflect how presise you want your movement to be
+     *
+     * @param driveTolerance tolerance in inches the robot is allowed to be off
+     * @param driveVelocity how fast the driving can be going
+     * @param driveMs how long driving tolerance and velocity must to meet their values for the driving to settle
+     * @param turnTolerance tolerance in degress the robot is allowed to be off
+     * @param turnVelocity how fast the robot can be turning
+     * @param turnMs how long turning tolerance and velocity must meet their values for the turning to settle
+     *
+     * ### Example Code:
+     * 
+     * ```cpp
+     * void intitalize(){
+     *    drivetrain.setBoomerangSettleGains({1.0, 2.5, 250}, {1.5, 8.0, 250});
+     * }
+     *
+    */
+    void setBoomerangSettleGains(Settle drive = {1.0, 2.5, 250}, Settle turn = {1.5, 8.0, 250});
 
     // ---- Setup ----
     std::vector<std::function<void(Drivetrain&)>> onCalibrated;
 
-    // Blocking IMU reset + starts the odometry task. Call once from initialize().
-    void calibrate(Pose startPose = Pose(0, 0, 90));
+    /**
+     * @brief Calibrate the imus, reset the pose and start the odom task
+     * 
+     * Call me once in initalize
+     *
+     * @param x the X value of the center of the robot
+     * @param y the Y value of the center of the robot
+     * @param heading the heading the robot faces in math standard (90 degrees = north, 0 degrees = east)
+     *
+     * ### Example Code:
+     * 
+     * ```cpp
+     * void intitalize(){
+     *    drivetrain.calibrate({0.0, 0.0, 90.0});
+     * }
+     *
+    */
+    void calibrate(Pose startPose = Pose(0.0, 0.0, 90.0));
 
-    // Requests that any in-progress blocking motion stop at its next
-    // iteration. Safe to call from another task (e.g. a disable handler).
+    /**
+     * @brief cancels the current motion on its next loop, and allows next async motion to run
+     * 
+     * Also safe to call in any other functions (Such as disabled section to ensure the robot stops moving)
+     *
+     * ### Example Code:
+     * 
+     * ```cpp
+     * void autonomus(){
+     *    drivetrain.motion(a, b, c);
+     *    drivetrain.cancelMotion();
+     * }
+     *
+    */
     void cancelMotion();
     
-    //Gets the track width
+    /**
+    * @brief returns the drivetrais track width, used to pass the trackwidth into functions that require it (such as PurePursuit)
+    */
     double getTrackWidth() const;
-    
-    //Warning, this will physically stop the motors but will not kill the functions running the motors
-    //To cancel the running of the functions call cancelMotion()
-    //Errorenous use of this function could cause your program to freeze
+
+    /**
+    * @brief stops the motor movement
+    * 
+    * WARNING, THIS WILL PHYSICALLY STOP THE MOTORS BUT NOT STOP THE FUNCTIONS THAT ARE CONTROLLING THE MOTORS AT THE TIME IT IS RAN, TO STOP THE FUNCTION , CALL 
+    *
+    * #### cancelMotion()
+    * 
+    * Errorenous use of this function may cause your program to freeze
+    */
     void stop();
 
     // ---- Pose ----
 
+    /**
+     * @brief returns the current pose
+    */
     Pose getPose() const;
-
+    
+    /**
+     * @brief set the pose of the robot, call at the start of each autonomus routine
+     *
+     * @param x the x pose of the robot
+     * @param y the y pose of the robot
+     * @param heading the heading the robot faces in math standard (90 degrees = north, 0 degrees = east)
+     * 
+     * ### Example Code
+     * ```cpp
+     * void autonomus() {
+     *    setPose({-12.0, 24.0, 0.0});
+     * }
+    */
     void setPose(const Pose& p);
 
     // ---- Motions ----
 
-    // Drives a length in inches along the current (or offset) heading, holding
-    // heading with the angular PID. Positive distance drives forward.
+    /**
+     * @brief Drive straight for a certian distance, with a controllable angular offset
+     *
+     * @param distanceInches how far the robot is to drive, positive is forwards, negitive is backwards
+     * @param timeoutMs how long the movement can run for before it is canceled if it does not settle
+     * @param maxVolt maximum speed in mV (0 - 12000) the robot can acclerate to during the motion
+     * @param minVolt the minimum speed in mV the robot will slow down to when decelerating
+     * @param headingOffset the angle the robot should drive at relitive to the current heading
+     * @param earlyExitRange how close the the end a motion chain can be activated, Both this and minVolt need values for a chain to be executed
+     * @param slewRate the rate at which the motion can accelerate in mV per 10 ms to prevent wheel slip
+     * @param async if the motion should run asyncronusly and be added to the motion queue or wait for the last motion to finish
+     *
+     * ### Example Code:
+     * 
+     * ```cpp
+     * void autonomus(){
+     *    drivetrain.driveStraight(10.0, 1000, {.maxVolt = 10000.0, .headingOffset = 10.0});
+     * }
+     *
+    */
     MotionResult driveStraight(double distanceInches, int timeoutMs, DriveParams params = {}, bool async = false);
 
-    // Turns in place to face `targetDeg`.
+    /**
+     * @brief turns the robot in place to face a desired feild oriented heading
+     *
+     * @param targetDeg the heading the robot should turn to face
+     * @param timeoutMs how long the movement can run for before it is canceled if it does not settle
+     * @param maxVolt maximum speed in mV (0 - 12000) the robot can acclerate to during the motion
+     * @param minVolt the minimum speed in mV the robot will slow down to when decelerating
+     * @param earlyExitRange how close the the end a motion chain can be activated, Both this and minVolt need values for a chain to be executed
+     * @param slewRate the rate at which the motion can accelerate in mV per 10 ms to prevent wheel slip
+     * @param async if the motion should run asyncronusly and be added to the motion queue or wait for the last motion to finish
+     *
+     * ### Example Code:
+     * 
+     * ```cpp
+     * void autonomus(){
+     *    drivetrain.turnToHeading(45.0, 1000, {.minVolt = 2000, .earlyExitRange = 10.0});
+     * }
+     *
+    */
     MotionResult turnToHeading(double targetDeg, int timeoutMs, TurnToHeadParams params = {}, bool async = false);
 
-    // Turns in place to face the point (x, y).
+    /**
+     * @brief turns the robot in place to face a desired point on the feild
+     *
+     * @param x the x position of the point
+     * @param y the y position of the point
+     * @param timeoutMs how long the movement can run for before it is canceled if it does not settle
+     * @param maxVolt maximum speed in mV (0 - 12000) the robot can acclerate to during the motion
+     * @param minVolt the minimum speed in mV the robot will slow down to when decelerating
+     * @param reversed if the front or back of the robot should turn to face the point (True = back, false = front)
+     * @param earlyExitRange how close the the end a motion chain can be activated, Both this and minVolt need values for a chain to be executed
+     * @param slewRate the rate at which the motion can accelerate in mV per 10 ms to prevent wheel slip
+     * @param async if the motion should run asyncronusly and be added to the motion queue or wait for the last motion to finish
+     *
+     * ### Example Code:
+     * 
+     * ```cpp
+     * void autonomus(){
+     *    drivetrain.turnToPoint(-48.0, 24.0, 1000, {.reversed = true}, true);
+     * }
+     *
+    */
     MotionResult turnToPoint(double x, double y, int timeoutMs, TurnToPointParams params = {}, bool async = false);
 
-    // Pivots about one side only (the other side stays stopped) to face `targetDeg`.
+    /**
+     * @brief swings around one side of the drivetrain to a desired heading
+     *
+     * @param targetDeg the desired final heading of the robot
+     * @param timeoutMs how long the movement can run for before it is canceled if it does not settle
+     * @param leftSidePivot the side of the drivetrain to pivot around (true = left, false = right)
+     * @param maxVolt maximum speed in mV (0 - 12000) the robot can acclerate to during the motion
+     * @param minVolt the minimum speed in mV the robot will slow down to when decelerating
+     * @param earlyExitRange how close the the end a motion chain can be activated, Both this and minVolt need values for a chain to be executed
+     * @param slewRate the rate at which the motion can accelerate in mV per 10 ms to prevent wheel slip
+     * @param async if the motion should run asyncronusly and be added to the motion queue or wait for the last motion to finish
+     *
+     * ### Example Code:
+     * 
+     * ```cpp
+     * void autonomus(){
+     *    drivetrain.swingToHeading(270.0, 1000, false);
+     * }
+     *
+    */
     MotionResult swingToHeading(double targetDeg, int timeoutMs, bool leftSidePivot = true, SwingToHeadingParams params = {}, bool async = false);
 
+    /**
+     * @brief preforms a drive and a turn at the same time, requires boomerang settle to be set
+     *
+     * @param x the desired final x
+     * @param y the desired final y
+     * @param heading the desired final heading
+     * @param timeoutMs how long the movement can run for before it is canceled if it does not settle
+     * @param maxVolt maximum speed in mV (0 - 12000) the robot can acclerate to during the motion
+     * @param minVolt the minimum speed in mV the robot will slow down to when decelerating
+     * @param lead how far to project the carrot point behind the target point (between 0 and 1)
+     * @param curveK how much to slow down for curving
+     * @param closeDist how close to the desired pose the robot will start a drive directly towards it
+     * @param reversed if the front or back of the robot should turn to face the point (True = back, false = front)
+     * @param earlyExitRange how close the the end a motion chain can be activated, Both this and minVolt need values for a chain to be executed
+     * @param slewRate the rate at which the motion can accelerate in mV per 10 ms to prevent wheel slip
+     * @param async if the motion should run asyncronusly and be added to the motion queue or wait for the last motion to finish
+     *
+     * ### Example Code:
+     * 
+     * ```cpp
+     * void autonomus(){
+     *    drivetrain.boomerang(-48.0, 24.0, 132.0, {.lead = 0.5, .closeDist = 0.2});
+     * }
+     *
+    */
     MotionResult boomerang(double x, double y, double heading, double timeOutMs, BoomParams params = {}, bool async = false);
 
-    // Drives to (x, y): pure pursuit by default, or turn-then-drive if
-    // usePurePursuit is false.
+    /**
+     * @brief Drive to a point on the feild
+     *
+     * @param x the x position of the point
+     * @param y the y position of the point
+     * @param turnTimeout how long the turn can run for before it is canceled if it does not settle
+     * @param driveTimeout how long the drive can run for before it is canceled if it does not settle
+     * @param maxVolt maximum speed in mV (0 - 12000) the robot can acclerate to during the motion
+     * @param minVolt the minimum speed in mV the robot will slow down to when decelerating
+     * @param usePurePursuit if pure pursuit should be used (if true, drive and turn timeout is combined, if false, a turn than drive is ran)
+     * @param reversed if the robot should drive forwards or reversed (True = reversed, false = forwards)
+     * @param earlyExitRange how close the the end a motion chain can be activated, Both this and minVolt need values for a chain to be executed
+     * @param slewRate the rate at which the motion can accelerate in mV per 10 ms to prevent wheel slip
+     * @param async if the motion should run asyncronusly and be added to the motion queue or wait for the last motion to finish
+     *
+     * ### Example Code:
+     * 
+     * ```cpp
+     * void autonomus(){
+     *    drivetrain.driveToPoint(-48.0, 34.0, 1000, 1500, {.usePurePursuit = false});
+     * }
+     *
+    */
     MotionResult driveToPoint(double x, double y, int turnTimeout, int driveTimeout, DriveToPointParams params = {}, bool async = false);
 
 
-    // Drives to (x, y) then turns to face `headingDeg`.
+    /**
+     * @brief Drive to a point on the feild and than turn to a heading
+     *
+     * @param x the x position of the pose
+     * @param y the y position of the pose
+     * @param headingDeg the heading of the pose
+     * @param turnTimeout how long the turn can run for before it is canceled if it does not settle
+     * @param driveTimeout how long the drive can run for before it is canceled if it does not settle
+     * @param maxVolt maximum speed in mV (0 - 12000) the robot can acclerate to during the motion
+     * @param minVolt the minimum speed in mV the robot will slow down to when decelerating
+     * @param usePurePursuit if pure pursuit should be used (if true, drive and turn timeout is combined, if false, a turn than drive is ran)
+     * @param reversed if the robot should drive forwards or reversed (True = reversed, false = forwards)
+     * @param earlyExitRange how close the the end a motion chain can be activated, Both this and minVolt need values for a chain to be executed
+     * @param slewRate the rate at which the motion can accelerate in mV per 10 ms to prevent wheel slip
+     * @param async if the motion should run asyncronusly and be added to the motion queue or wait for the last motion to finish
+     *
+     * ### Example Code:
+     * 
+     * ```cpp
+     * void autonomus(){
+     *    drivetrain.driveToPose(-48.0, 34.0, 70.0, 1000, 1500, {.reversed = true});
+     * }
+     *
+    */
     MotionResult driveToPose(double x, double y, double headingDeg, int turnTimeout, int driveTimeout, DriveToPoseParams params = {}, bool async = false);
 
     
@@ -311,9 +541,6 @@ public:
                 lastVReading = currentVReading;
                 pros::delay(10);
             }
-                // motors.left->move_voltage(0);
-                // motors.right->move_voltage(0);
-            pros::delay(300);
         };
         spin(-7000, 7000, 720.0, SdV_ccw, SdH_ccw, Stheta_ccw);
         motors.left->move_voltage(0);
@@ -325,10 +552,7 @@ public:
         double denom = (Stheta_ccw - Stheta_cw);
         double horizontalOffset = (SdH_ccw - SdH_cw) / denom;
         double verticalOffset = (SdV_ccw - SdV_cw) / denom;
-        pros::delay(200);
-        printf("Vertical Offset: %.3lf\n", verticalOffset);
-        pros::delay(200);
-        printf("Horizontal Offset: %.3lf\n", horizontalOffset);
+        printf("Vertical Offset: %.3lf\nHorizontal Offset: %.3lf\n", verticalOffset, horizontalOffset);
         motors.left->move_voltage(0);
         motors.right->move_voltage(0);
         pros::delay(1000);
@@ -351,8 +575,8 @@ private:
     Settle driveSettle;// For drives
     Settle turnSettle; // For turns
     Settle swingSettle; //For swinging turns
-    Settle boomerangDriveSettle{1.0, 2.5, 200}; //For boomerang drive motions
-    Settle boomerangTurnSettle{1.5, 8.0, 200};  //For boomerang turn motions
+    Settle boomerangDriveSettle{1.0, 2.5, 250}; //For boomerang drive motions
+    Settle boomerangTurnSettle{1.5, 8.0, 250};  //For boomerang turn motions
 
     Pose pose{0.0, 0.0, 0.0};
     double trackWidth = 0.0; // inches, center-to-center of left/right wheels
@@ -388,21 +612,9 @@ private:
     bool progressPaused = false;
     int  motionDepth = 0;    
 
-    void requestMotion() {
-        mutex.take(TIMEOUT_MAX);
-        if (motionDepth++ == 0){
-            progress = 0.0;
-            progressPaused = false;
-            cancelRequested.store(false);
-            motionRunning = true;
-        }
-    }
+    void requestMotion();
     
-    void endMotion(){
-        std::cout << "endMotion\n";
-       if(--motionDepth == 0) motionRunning = false;
-       mutex.give();
-    }
+    void endMotion();
 
 };
 

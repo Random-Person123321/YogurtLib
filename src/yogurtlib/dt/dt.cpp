@@ -3,29 +3,29 @@ using namespace yogurt;
 
 ControllerSettings::ControllerSettings(double p, double i, double d, double maxInt,
                         double errTol, double velTol, int settleMs)
-        : kp(p), ki(i), kd(d), maxIntegral(maxInt),
-          errTol(errTol), velTol(velTol), settleMs(settleMs) {} 
+                        : kp(p), ki(i), kd(d), maxIntegral(maxInt),
+                        errTol(errTol), velTol(velTol), settleMs(settleMs) {} 
 
 OdomSensors::OdomSensors(pros::Rotation* vertical, double verticalDiameter, double verticalOffset,
-                pros::Rotation* horizontal, double horizontalDiameter, double horizontalOffset,
-                yogurt::IMU imus, pros::Distance* leftD, pros::Distance* frontD,
-                pros::Distance* rightD, pros::Distance* backD, double leftOffset, double rightOffset,
-                double frontOffset, double backOffset) :
-                vertical(vertical), verticalDiameter(verticalDiameter), verticalOffset(verticalOffset),
-                horizontal(horizontal), horizontalDiameter(horizontalDiameter), horizontalOffset(horizontalOffset),
-                imus(imus), leftD(leftD), frontD(frontD), rightD(rightD), backD(backD),
-                leftOffset(leftOffset), rightOffset(rightOffset), frontOffset(frontOffset), backOffset(backOffset) {}
+                         pros::Rotation* horizontal, double horizontalDiameter, double horizontalOffset,
+                         yogurt::IMU imus, pros::Distance* leftD, pros::Distance* frontD,
+                         pros::Distance* rightD, pros::Distance* backD, double leftOffset, double rightOffset,
+                         double frontOffset, double backOffset) :
+                         vertical(vertical), verticalDiameter(verticalDiameter), verticalOffset(verticalOffset),
+                         horizontal(horizontal), horizontalDiameter(horizontalDiameter), horizontalOffset(horizontalOffset),
+                         imus(imus), leftD(leftD), frontD(frontD), rightD(rightD), backD(backD),
+                         leftOffset(leftOffset), rightOffset(rightOffset), frontOffset(frontOffset), backOffset(backOffset) {}
 
 Drivetrain::Drivetrain(DriveMotors motors, OdomSensors odomSensors,
-               ControllerSettings driveSettings, ControllerSettings turnSettings, //Drive for driveStraight, turn for turnning
-               ControllerSettings swingSettings) : //swing for sing settings
-               motors(motors), odom(odomSensors),
-               drivePID(driveSettings.kp, driveSettings.ki, driveSettings.kd, driveSettings.maxIntegral), //DriveStraight
-               turnPID(turnSettings.kp, turnSettings.ki, turnSettings.kd, turnSettings.maxIntegral), // Turning
-               swingPID(swingSettings.kp, swingSettings.ki, swingSettings.kd, swingSettings.maxIntegral), //Swing logic
-               driveSettle{driveSettings.errTol, driveSettings.velTol, driveSettings.settleMs}, // Drivestraight
-               turnSettle{turnSettings.errTol, turnSettings.velTol, turnSettings.settleMs}, //Settle for turning from turnSettings
-               swingSettle{swingSettings.errTol, swingSettings.velTol, swingSettings.settleMs} {}
+                       ControllerSettings driveSettings, ControllerSettings turnSettings, //Drive for driveStraight, turn for turnning
+                       ControllerSettings swingSettings) : //swing for sing settings
+                       motors(motors), odom(odomSensors),
+                       drivePID(driveSettings.kp, driveSettings.ki, driveSettings.kd, driveSettings.maxIntegral), //DriveStraight
+                       turnPID(turnSettings.kp, turnSettings.ki, turnSettings.kd, turnSettings.maxIntegral), // Turning
+                       swingPID(swingSettings.kp, swingSettings.ki, swingSettings.kd, swingSettings.maxIntegral), //Swing logic
+                       driveSettle{driveSettings.errTol, driveSettings.velTol, driveSettings.settleMs}, // Drivestraight
+                       turnSettle{turnSettings.errTol, turnSettings.velTol, turnSettings.settleMs}, //Settle for turning from turnSettings
+                       swingSettle{swingSettings.errTol, swingSettings.velTol, swingSettings.settleMs} {}
 
 void Drivetrain::setHeadingCorrectionGains(double kp, double ki, double kd, double maxIntegral) {
         angularPID = PID(kp, ki, kd, maxIntegral);
@@ -92,4 +92,21 @@ void Drivetrain::waitUntilDone() {
 void Drivetrain::waitUntil(double target) {
     do pros::delay(20);
     while (motionRunning.load() && progress.load() < target);
+}
+
+// Async motion queuing functions
+void Drivetrain::requestMotion() {
+    mutex.take(TIMEOUT_MAX);
+    if (motionDepth++ == 0){
+        progress = 0.0;
+        progressPaused = false;
+        cancelRequested.store(false);
+        motionRunning = true;
+    }
+}
+
+void Drivetrain::endMotion(){
+    std::cout << "endMotion\n";
+    if(--motionDepth == 0) motionRunning = false;
+    mutex.give();
 }

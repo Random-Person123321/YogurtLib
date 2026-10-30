@@ -61,7 +61,7 @@ public: //Const accepts written in lists like {{0, 0}, {10, 5}}
     Path (const std::vector<PathVec>& waypoints, const PathConfig& configs);
 
     /**
-     * @brief sets the first point of the path to the current robot pose and calls build()
+     * @brief Sets the first point of the path to the current robot pose and calls build()
      */    
     void setStart(double x, double y);
 

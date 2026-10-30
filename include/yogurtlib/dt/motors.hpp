@@ -9,22 +9,9 @@ enum class BrakeMode {
     Hold
 };
 
-inline pros::motor_brake_mode_e_t toProsBrakeMode(BrakeMode mode) {
-    switch (mode) {
-        case BrakeMode::Coast: return MOTOR_BRAKE_COAST;
-        case BrakeMode::Hold:  return MOTOR_BRAKE_HOLD;
-        case BrakeMode::Brake:
-        default:               return MOTOR_BRAKE_BRAKE;
-    }
-}
+pros::motor_brake_mode_e_t toProsBrakeMode(BrakeMode mode);
 
-inline BrakeMode toBrakeMode(pros::MotorBrake mode) {
-    switch (mode) {
-        case pros::MotorBrake::coast : return BrakeMode::Coast;
-        case pros::MotorBrake::hold :  return BrakeMode::Hold;
-        case pros::MotorBrake::brake : default: return BrakeMode::Brake;
-    }
-}
+BrakeMode toBrakeMode(pros::MotorBrake mode);
 
 // Raw drivetrain specs
 class DriveMotors {
@@ -32,71 +19,79 @@ public:
     pros::MotorGroup* left;
     pros::MotorGroup* right;
 
-    DriveMotors(pros::MotorGroup* left, pros::MotorGroup* right,
-                double wheelDiameter)
-        : left(left), right(right),
-          wheelDiameter(wheelDiameter) {}
+    DriveMotors(pros::MotorGroup* left, pros::MotorGroup* right, double wheelDiameter);
 
     /**
      * @brief Set motor voltages for both sides of the drivetrain
     */
-    void setVoltage(double leftMv, double rightMv) const {
-        left->move_voltage((std::int32_t)leftMv);
-        right->move_voltage((std::int32_t)rightMv);
-        lastL = leftMv;
-        lastR = rightMv;
-    }
+    void setVoltage(double leftMv, double rightMv) const;
 
     /**
+     * @brief Aracade style driver controls built into yogurtlib, for use in the driver control period of a match 
+     * 
+     * ### Example code:
+     * 
+     * ```cpp
+     * void opcontrol() {
+     *     while(true){
+     *         drivetrain.motors.arcade(master.get_analog(analog_left_Y), 
+     *                                  master.get_analog(analog_right_X);
+     *     }
+     * }
+     * ```
+     */
+    void arcade(double power, double turn) const;
+
     /**
-     * @brief Tank driver controls 
+     * @brief Tank style driver controls built into yogurtlib, for use in the driver control period of a match 
      * 
-     *  Example code:
+     * ### Example code:
      * 
-     * @code
-    void opcontroll() {
-        while(true){
-            drivetrain.motors.arcade(master.get_analog(analog_left_Y), 
-                                   master.get_analog(analog_right_X));
-        }
-    } @endcode
+     * ```cpp
+     * void opcontrol() {
+     *     while(true){
+     *         drivetrain.motors.tank(master.get_analog(analog_left_Y), 
+     *                                master.get_analog(analog_right_Y);
+     *     }
+     * }
+     * ```
+     */
+
+    void tank(double leftPower, double rightPower) const;
+
+    /**
+     * @brief Sets the brakemode of the motors, choose between:
+     *
+     * - Break
+     *
+     * - Hold
+     *
+     * - Coast
+     *
+     * ### Example code:
+     *
+     * ```cpp
+     * void initialize(){
+     *    drivetrain.motors.setBrakeMode(yogurt:BrakeMode::Coast);
+     * }
+     */
+    void setBrakeMode(BrakeMode mode) const;
+
+    
+    /**
+     * @brief Stops the drivetrains movement
+     */
+    void stop(BrakeMode mode = BrakeMode::Brake) const;
+
+    /**
+     * @brief Returns the last voltage targets for each side of the drivetrain, left first, then right
     */
-    void arcade(double power, double turn) const {
-        tank(power + turn, power - turn);
-    }
+    std::pair<double, double> getLastVolt() const;
 
     /**
-     * @brief Tank driver controls 
-     * 
-     *  Example code:
-     * 
-     * @code
-    void opcontroll() {
-        while(true){
-            drivetrain.motors.tank(master.get_analog(analog_left_Y), 
-                                   master.get_analog(analog_right_Y));
-        }
-    } @endcode
+     * @brief Returns the wheel diameter of the drivetrain
     */
-    void tank(double leftPower, double rightPower) const {
-        left->move(std::clamp(leftPower, -127.0, 127.0));
-        right->move(std::clamp(rightPower, -127.0, 127.0));
-    }
-
-    void setBrakeMode(BrakeMode mode) const {
-        left->set_brake_mode_all(toProsBrakeMode(mode));
-        right->set_brake_mode_all(toProsBrakeMode(mode));
-    }
-
-    void stop(BrakeMode mode = BrakeMode::Brake) const {
-        setBrakeMode(mode);
-        left->move_voltage(0);
-        right->move_voltage(0);
-        lastL = 0.0; lastR = 0.0;
-    }
-
-    std::pair<double, double> getLastVolt() const {return std::make_pair(lastL, lastR); }
-    double getWheelDiameter() const { return wheelDiameter; }
+    double getWheelDiameter() const;
 
 private:
     double wheelDiameter;   // inches

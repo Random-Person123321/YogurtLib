@@ -1,47 +1,48 @@
 #include "yogurtlib/UI.hpp"
+using namespace yogurt;
 
-yogurt::Drivetrain* yogurt::UI::drivetrainRef = nullptr;
+Drivetrain* UI::drivetrainRef = nullptr;
 
 // Out-of-class definitions: every `static` member UI.hpp declares needs
 // exactly one of these somewhere, or it has a declaration but no storage.
-bool yogurt::UI::do_data_updates = false;
-bool yogurt::UI::auto_check = true;
+bool UI::do_data_updates = false;
+bool UI::auto_check = true;
 
-lv_obj_t* yogurt::UI::home_scr = nullptr;
-lv_obj_t* yogurt::UI::logo_scr = nullptr;
-lv_obj_t* yogurt::UI::data_scr = nullptr;
-lv_obj_t* yogurt::UI::auton_scr = nullptr;
-lv_obj_t* yogurt::UI::error_scr = nullptr;
-lv_obj_t* yogurt::UI::bg = nullptr;
+lv_obj_t* UI::home_scr = nullptr;
+lv_obj_t* UI::logo_scr = nullptr;
+lv_obj_t* UI::data_scr = nullptr;
+lv_obj_t* UI::auton_scr = nullptr;
+lv_obj_t* UI::error_scr = nullptr;
+lv_obj_t* UI::bg = nullptr;
 
-lv_obj_t* yogurt::UI::logo_btn = nullptr;
-lv_obj_t* yogurt::UI::data_btn = nullptr;
-lv_obj_t* yogurt::UI::auton_btn = nullptr;
+lv_obj_t* UI::logo_btn = nullptr;
+lv_obj_t* UI::data_btn = nullptr;
+lv_obj_t* UI::auton_btn = nullptr;
 
-lv_obj_t* yogurt::UI::logo_home_btn = nullptr;
+lv_obj_t* UI::logo_home_btn = nullptr;
 
-lv_obj_t* yogurt::UI::data_home_btn = nullptr;
-lv_obj_t* yogurt::UI::imu1_lbl = nullptr;
-lv_obj_t* yogurt::UI::imu2_lbl = nullptr;
-lv_obj_t* yogurt::UI::imu3_lbl = nullptr;
-lv_obj_t* yogurt::UI::pose_x_lbl = nullptr;
-lv_obj_t* yogurt::UI::pose_y_lbl = nullptr;
-lv_obj_t* yogurt::UI::heading_lbl = nullptr;
-lv_obj_t* yogurt::UI::calibrate_btn = nullptr;
+lv_obj_t* UI::data_home_btn = nullptr;
+lv_obj_t* UI::imu1_lbl = nullptr;
+lv_obj_t* UI::imu2_lbl = nullptr;
+lv_obj_t* UI::imu3_lbl = nullptr;
+lv_obj_t* UI::pose_x_lbl = nullptr;
+lv_obj_t* UI::pose_y_lbl = nullptr;
+lv_obj_t* UI::heading_lbl = nullptr;
+lv_obj_t* UI::calibrate_btn = nullptr;
 
-lv_obj_t* yogurt::UI::field = nullptr;
-lv_obj_t* yogurt::UI::selector_home_btn = nullptr;
-lv_obj_t* yogurt::UI::next_btn = nullptr;
-lv_obj_t* yogurt::UI::last_btn = nullptr;
-lv_obj_t* yogurt::UI::select_btn = nullptr;
-lv_obj_t* yogurt::UI::auton_name = nullptr;
+lv_obj_t* UI::field = nullptr;
+lv_obj_t* UI::selector_home_btn = nullptr;
+lv_obj_t* UI::next_btn = nullptr;
+lv_obj_t* UI::last_btn = nullptr;
+lv_obj_t* UI::select_btn = nullptr;
+lv_obj_t* UI::auton_name = nullptr;
 
-std::vector<yogurt::AutoSelection> yogurt::UI::auton_list = {};
-int yogurt::UI::selected_auto = 0;
-int yogurt::UI::current_auto = 0;
+std::vector<AutoSelection> UI::auton_list = {};
+int UI::selected_auto = 0;
+int UI::current_auto = 0;
 
 //IMU Calibration
-void yogurt::UI::IMUcalibrate(lv_event_t* e) {
+void UI::IMUcalibrate(lv_event_t* e) {
     for (auto* imu : drivetrainRef->odom.imus.sensors) {
         imu->reset(false);
         pros::delay(10); //10ms delay
@@ -49,7 +50,7 @@ void yogurt::UI::IMUcalibrate(lv_event_t* e) {
     pros::delay(2000);
 }
 
-void yogurt::UI::screen_init(Drivetrain& dt){
+void UI::screen_init(Drivetrain& dt){
     drivetrainRef = &dt;
     // create screens FIRST
     home_scr = lv_obj_create(NULL);
@@ -192,22 +193,22 @@ void yogurt::UI::screen_init(Drivetrain& dt){
     lv_screen_load(home_scr);
 }
 
-void yogurt::UI::home_screen(lv_event_t* e){
+void UI::home_screen(lv_event_t* e){
     lv_screen_load(home_scr);
     do_data_updates = false;
 
 }
 
-void yogurt::UI::logo_screen(lv_event_t* e){
+void UI::logo_screen(lv_event_t* e){
     lv_screen_load(logo_scr);
 }
 
-void yogurt::UI::data_screen(lv_event_t* e){
+void UI::data_screen(lv_event_t* e){
     lv_screen_load(data_scr);
     do_data_updates = true;
 }
 
-void yogurt::UI::auton_screen(lv_event_t* e){
+void UI::auton_screen(lv_event_t* e){
     if(!auton_list.empty()){
         lv_screen_load(auton_scr);
         if (auton_list[current_auto].selected){
@@ -220,14 +221,14 @@ void yogurt::UI::auton_screen(lv_event_t* e){
     }
 }
 
-void yogurt::UI::select_auto(lv_event_t* e){
+void UI::select_auto(lv_event_t* e){
     auton_list[selected_auto].selected = false; //Turn off old auton selected button
     selected_auto = current_auto; //Make the current auton selected
     auton_list[selected_auto].selected = true; //Update the vector so the pages are nice :)
     lv_obj_add_state(select_btn, LV_STATE_CHECKED);
 }
 
-void yogurt::UI::next_auto(lv_event_t* e){
+void UI::next_auto(lv_event_t* e){
     current_auto += 1;
     if (current_auto >= auton_list.size()){
         current_auto = 0;
@@ -241,7 +242,7 @@ void yogurt::UI::next_auto(lv_event_t* e){
     lv_image_set_src(field, auton_list[current_auto].file);
 }
 
-void yogurt::UI::last_auto(lv_event_t* e){
+void UI::last_auto(lv_event_t* e){
     current_auto -= 1;
     if (current_auto < 0){
         current_auto = auton_list.size() -1;
@@ -256,7 +257,7 @@ void yogurt::UI::last_auto(lv_event_t* e){
 }
 
 
-void yogurt::UI::update_data(lv_timer_t* t){
+void UI::update_data(lv_timer_t* t){
     if (do_data_updates == true){
         char buf[13];
 
@@ -287,7 +288,7 @@ void yogurt::UI::update_data(lv_timer_t* t){
     }
     if (auto_check){
         if(pros::competition::is_autonomous()){
-            yogurt::UI::logo_screen(nullptr);
+            UI::logo_screen(nullptr);
             auto_check = false;
         }
     }
