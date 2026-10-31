@@ -13,13 +13,24 @@ struct PathPoint {
     double s = 0.0; // How many inches along the path the robot is
     double curvature = 0.0, vel = 0.0; // Curvature and velocity (0-127)
 };
-
+/**
+ * @brief configs that are tuneable per path
+ * 
+ * @param maxSpeed maximum speed the robot can drive, out of 127
+ * @param decelDist inches that allows the robot to slow from full speed to zero, smaller number means braking later
+ * @param turnK speed per inch of turn radius, controls slow down for tight curves and turns
+ * @param maxPtSpacing if any waypoints are further than this distance, build() will inject more, very useful for automatic paths such as driveToPoint where there are only 2 largely spaced points
+ *
+ * ### Example Code
+ * 
+ * ```cpp
+ * yogurt::PathConfig config = ({.decelDist = 12.0, .turnK = 3.0});
+ */
 struct PathConfig {
-    double maxSpeed = 127.0; //max speed the robot drives, out of 127
-    double decelDist = 24.0; //Inches that allows the robot to slow from full speed to 0. Smaller number means braking later
-    double turnK = 5.0; //speed(0-127) per inch of turn radius. How much to slow down by during tight curves/turns
-    double maxPtSpacing = 3.0; /* If any segment is more than 3" apart, the path build() function will inject more.
-                                  Useful for driveToPoint function where there is only two largely space points */
+    double maxSpeed = 127.0;
+    double decelDist = 24.0;
+    double turnK = 5.0;
+    double maxPtSpacing = 3.0;
 };
 
 struct WheelTargets {
@@ -27,6 +38,19 @@ struct WheelTargets {
     double leftAccel = 0.0, rightAccel = 0.0;
 };
 
+/**
+ * @brief per-robot tuneables, similar to a PID but for purepursuit
+ * 
+ * @param kV tells the motors how much baseline power to supply to move steadily at a target speed, from 0 - 127
+ * @param kA accounts for intertia of robot, injecting extra power as required by acceleration, 0 - 127
+ * @param kS static friction, power should not drop below this otherwise it risks stopping, 0 - 127
+ * @param kP porportional gain, scales power to fix error, 0 - 127
+ * 
+ * ### Example Code
+ * 
+ * ```cpp
+ * yogurt::VoltageTerms terms = ({.kV = 90.0, .kS = 20.0, .kP = 20.0});
+ */
 struct VoltageTerms {
     double kV = 95.0;
     double kA = 0.0;
@@ -42,20 +66,6 @@ struct FollowReturn {
 
 
 class Path {
-private:
-    std::vector<PathVec> waypoints; //Just uses x and y coordinates
-    std::vector<PathPoint> pts;
-    PathConfig configs;
-    bool startReplaced = false;
-    double trackWidth = 0.0; // inches, center-to-center of left/right wheels
-
-    static double distance (const PathPoint& first, const PathPoint& second);
-
-    // Builds the path with all the functions inside the Path class, 
-    // this includes standard speed calculations, curvature calculations and
-    // ensuring the path is valid to drive
-    void build();
-
 public: //Const accepts written in lists like {{0, 0}, {10, 5}}
 
     Path (const std::vector<PathVec>& waypoints, const PathConfig& configs);
@@ -95,6 +105,20 @@ public: //Const accepts written in lists like {{0, 0}, {10, 5}}
     double length() const;
 
     const PathConfig& config() const;
+private:
+    std::vector<PathVec> waypoints; //Just uses x and y coordinates
+    std::vector<PathPoint> pts;
+    PathConfig configs;
+    bool startReplaced = false;
+    double trackWidth = 0.0; // inches, center-to-center of left/right wheels
+
+    static double distance (const PathPoint& first, const PathPoint& second);
+
+    // Builds the path with all the functions inside the Path class, 
+    // this includes standard speed calculations, curvature calculations and
+    // ensuring the path is valid to drive
+    void build();
+
 };
 
 class PurePursuit {

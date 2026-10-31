@@ -141,7 +141,7 @@ double Drivetrain::speedToVoltage (double vel, double accel, double measured, co
 ===================================
 |        Path Helper Functions    |
 ===================================
-*///
+*/
 
 Path::Path(const std::vector<PathVec>& waypoints, const PathConfig& configs) : 
       waypoints(waypoints), configs(configs) {}

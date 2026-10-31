@@ -58,16 +58,34 @@ struct OdomSensors {
 
 };
 
-// Tunable pure-pursuit profile. Defaults are reasonable starting points —
-// retune per-robot on the Drivetrain instance, not by editing this header.
+/**
+ * @brief robot setting for PurePursuit, used across all instances of drivetrain.curve()
+ * 
+ * retune per-robot on the Drivetrain instance, not by editing this header
+ * 
+ * @param voltTerms voltage terms for pure pursuit, similar but also very different to a PID, see yogurt::VoltageTerms for documentation
+ * @param lookaheadDist default lookahead, while tuneable per call, if a value is not given per-call it will revert to this value
+ * @param endTolerance counts a movement as done once within this amount in inches
+ * @param stuckMs how long the robot doesnt move by stuckDist for to assume it is stuck
+ * @param stuckDist how far the robot must move in stuckMs to not be stuck in inches
+ * @param lostDist how far from the path the robot must be to assume it is lost in inches
+ * @param speedAlpha how much to smooth the measured speed based on drivetrain motor encoders
+ * 
+ * ### Example Code
+ * 
+ * ```cpp
+ * void intialize() {
+ *    drivetrain.PursuitSettings = ({.voltTerms = terms, .lookaheadDist = 12.0, .endTolerance = 2.0});
+ *  }
+ */
 struct PursuitProfile {
-    VoltageTerms voltTerms; //Tuneable values for pure pursuit ("PID")
-    double lookaheadDist = 12.0; //How far ahead we look for points
-    double endTolerance = 1.0; //Counts as done once within this amount from the end point (Inches)
-    int stuckMs = 500; //if no path progress for this long -> Stuck
-    double stuckDist = 0.5; //If progressS doesnt increase by this  much we assume stuck
-    double lostDist = 12.0; //Exit if the robot is further than this from the nearest path point
-    double speedAlpha = 0.4; //Smoothing for the measured speed
+    VoltageTerms voltTerms;
+    double lookaheadDist = 12.0;
+    double endTolerance = 1.0;
+    int stuckMs = 500;
+    double stuckDist = 0.5;
+    double lostDist = 12.0; 
+    double speedAlpha = 0.4;
 };
 
 struct DriveParams {
@@ -451,7 +469,7 @@ public:
      *
      * @param x the x position of the point
      * @param y the y position of the point
-     * @param turnTimeout how long the turn can run for before it is canceled if it does not settle
+     * @param turnTimeout how long the motion can run for before it is canceled if it does not settle
      * @param driveTimeout how long the drive can run for before it is canceled if it does not settle
      * @param maxVolt maximum speed in mV (0 - 12000) the robot can acclerate to during the motion
      * @param minVolt the minimum speed in mV the robot will slow down to when decelerating
@@ -471,14 +489,13 @@ public:
     */
     MotionResult driveToPoint(double x, double y, int turnTimeout, int driveTimeout, DriveToPointParams params = {}, bool async = false);
 
-
     /**
      * @brief Drive to a point on the feild and than turn to a heading
      *
      * @param x the x position of the pose
      * @param y the y position of the pose
      * @param headingDeg the heading of the pose
-     * @param turnTimeout how long the turn can run for before it is canceled if it does not settle
+     * @param turnTimeout how long the motion can run for before it is canceled if it does not settle
      * @param driveTimeout how long the drive can run for before it is canceled if it does not settle
      * @param maxVolt maximum speed in mV (0 - 12000) the robot can acclerate to during the motion
      * @param minVolt the minimum speed in mV the robot will slow down to when decelerating
@@ -498,72 +515,78 @@ public:
     */
     MotionResult driveToPose(double x, double y, double headingDeg, int turnTimeout, int driveTimeout, DriveToPoseParams params = {}, bool async = false);
 
-    
-    
-    // Gets the actual rpm of the motors using encoder units
+    /**
+     * @brief follows a curved or straight path
+     * 
+     * The curve motion requires:
+     * 
+     * - a path in a yogurtlib path vector (yogurt::pathVec)
+     * 
+     * - Pathconfigs (see yogurt::Pathconfig for documentation)
+     * 
+     * - Pursuit Settigns (see drivetrain.PursuitSettings for documentation)
+     * 
+     * @param path the path that the robot should follow, aswell as the configs
+     * @param timeoutMs how long the motion can run for before it is canceled if it does not settle
+     * @param reversed if the drivetrain should drive forwards or reversed for the motion (false = forwards, true = reversed)
+     * @param lookaheadDist how far ahead the robot should "look" before it thinks it is lost
+     * @param minSpeed the minimum speed the robot will slow down to when decelerating (scale of 0 - 127)
+     * @param earlyExitRange how close the the end a motion chain can be activated, Both this and minSpeed need values for a chain to be executed
+     * @param slewRate the rate at which the motion can accelerate in mV per 10 ms to prevent wheel slip
+     *  ### Example Code:
+     * 
+     * ```
+     * void autonomus() {
+     *   drivetrain.curve(loop, 2000, {.reversed = true});
+     * } 
+     * ```
+     */
+    MotionResult curve(Path path, int timeoutMs, CurveParams params = {}, bool async = false);
+
+    /**
+     * @brief gets the actualSpeed of the drivetrain using motor encoder rpm's, helper function for purepursuit
+     */
     double getActualSpeed (pros::MotorGroup& mg, double alpha, double& measured, double& lastTicks, std::uint32_t& lastStamp);
 
-
-    // Takes a speed from Curve and sets it to a voltage for the DT to understand
+   /**
+    * @brief takes in the speed from pure pursuit and converts to voltage to set the motors too, helper function for purepursuit
+    */
     static double speedToVoltage (double vel, double accel, double measured, const VoltageTerms& vt);
-
-    MotionResult curve(Path path, int timeoutMs, CurveParams params = {}, bool async = false);
  
-    void tuneOffset() {
-        requestMotion();
-        double SdV_ccw = 0, SdV_cw = 0;//Sum of delta Vertical over turns
-        double SdH_ccw = 0, SdH_cw = 0;
-        double Stheta_ccw = 0, Stheta_cw = 0;
-
-        //Need radians for formula
-        auto spin = [&] (double lSpeed, double rSpeed, double angle, 
-                        double& SdV, double& SdH, double& Stheta) {
-
-            double H_IN_PER_TICK = (odom.horizontalDiameter * M_PI) / 36000.0;
-            double V_IN_PER_TICK = (odom.verticalDiameter * M_PI) / 36000.0;
-            double radAngle = deg2rad(angle);
-
-            double lastHReading = odom.horizontal->get_position(), lastVReading = odom.vertical->get_position(), lastTheta = pose.theta;
-            motors.left->move_voltage(lSpeed);
-            motors.right->move_voltage(rSpeed);
-            pros::delay(200);
-            
-            while (fabs(Stheta) < radAngle) {
-                double currentHReading = odom.horizontal->get_position(), currentVReading = odom.vertical->get_position(), currentTheta = pose.theta;
-                double thetaDeg = angleDiffDeg(currentTheta, lastTheta);
-
-                SdV += (currentVReading - lastVReading) * V_IN_PER_TICK;
-                SdH += (currentHReading - lastHReading) * H_IN_PER_TICK;
-                Stheta += deg2rad(thetaDeg);
-
-                lastTheta = currentTheta;
-                lastHReading = currentHReading;
-                lastVReading = currentVReading;
-                pros::delay(10);
-            }
-        };
-        spin(-7000, 7000, 720.0, SdV_ccw, SdH_ccw, Stheta_ccw);
-        motors.left->move_voltage(0);
-        motors.right->move_voltage(0);
-        pros::delay(1000);
-        spin(7000, -7000, 720.0, SdV_cw, SdH_cw, Stheta_cw);
-
-
-        double denom = (Stheta_ccw - Stheta_cw);
-        double horizontalOffset = (SdH_ccw - SdH_cw) / denom;
-        double verticalOffset = (SdV_ccw - SdV_cw) / denom;
-        printf("Vertical Offset: %.3lf\nHorizontal Offset: %.3lf\n", verticalOffset, horizontalOffset);
-        motors.left->move_voltage(0);
-        motors.right->move_voltage(0);
-        pros::delay(1000);
-        endMotion();
-    }
+    /**
+     * @brief run this to tune the offset of odom pods, should be done after odom wheel diameters are tuned, ideally ran multiple times with the values averaged, especially helpful for all omniwheel set ups
+     */
+    void tuneOffset();
 
     //Asymetrical slew
     static double slew(double target, double prev, double maxDelta);
 
+    /**
+     * @brief wait until the previous asyncronusly run function finishes, useful if you want to change pneumatics/etc while moving but dont want to start scoring/etc
+     * 
+     * ### Example Code
+     * 
+     * ```cpp
+     * void autonomus() {
+     *    drivetrain.motion(a, b, c, true);
+     *    drivetrain.waitUntilDone();
+     * }
+     */
     void waitUntilDone();
     
+    /**
+     * @brief a wait function for async functions
+     * 
+     * @param target the target that should be waited until, units depend on the motion that is running asyncronusly (Inches or degress)
+     * 
+     * ### Example Code
+     * 
+     * ```cpp
+     * void autonomus() {
+     *   drivetrain.motion(a, b, c, true);
+     *   drivetrain.waitUntil(10.0);
+     * }
+     */
     void waitUntil(double target);
 
 private:
