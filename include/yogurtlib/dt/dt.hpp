@@ -11,24 +11,55 @@
 
 namespace yogurt {
 
-// Bundles a PID's gains with the Settle config used to decide when a motion
-// driven by that PID has finished.
-struct ControllerSettings {
-    double kp, ki, kd, maxIntegral;
-    double errTol, velTol;
-    int settleMs;
 
-    ControllerSettings(double p, double i, double d, double maxInt,
-                        double errTol, double velTol, int settleMs);
-    
+
+struct DistanceSensors {
+    pros::Distance* sensor = nullptr;
+    double xOffset = 0.0; // The distance the sensor is offset in X, when the robot is facing north, positive is right
+    double yOffset = 0.0; // The distance the sensor is offset in Y, when the robot is facing north, posotove is forwards
+    bool sensorDirPositive = true;
+    bool isXaxis = true;
 };
 
-// Odometry hardware: tracking wheels, IMUs, and wall-distance sensors. 
-// Leave a pointer null to disable that sensor. Aggregate type —
-// construct with designated initializers, e.g.
-//   OdomSensors odom{.vertical = &vert, .verticalOffset = 0.38, .imus = {&imu1, &imu2}};
-// The distance sensors exist purely so a future MCL localizer has hardware
-// access; Drivetrain itself doesn't read them.
+/**
+    * @brief The owner of all odometry / tracking sensors, these are than passed into the drivetrain
+    *
+    * ### Requirements for odometry
+    * 
+    * - A vertical odometry rotational sensor
+    *
+    * - A horizontal odometry rotational sensor
+    *
+    * - A minimum of 1 imu, with expansion for more
+    *
+    * - Distance sensors
+    *
+    * @param vertical the PROS rotational sensor that is connected to the vertical tracking wheel
+    * @param verticalDiameter the exact distance the wheel tracks
+    * @param verticalOffset the offset of the vertical tracking wheel
+    * @param horizontal the PROS rotatioinal sensor that is connected to the hortizontal tracking wheel
+    * @param horizontalDiameter the exact distance the wheel tracks
+    * @param horizontalOffset the offset of the horizontal tracking wheel
+    * @param imus a yogurtlib vector containing the IMU's (See yogurt::IMU for documentation)
+    * @param leftD the PROS distance sensor that is mounted on the left side of the robot
+    * @param frontD the PROS distance sensor that is mounted on the front of the robot
+    * @param rightD the PROS distance sensor that is mounted on the right side of the robot
+    * @param backD the PROS distance sensor that is mounted on the back of the robot
+    * @param leftOffset the offset from the center in the X axis when the robot is facing north, positive is right
+    * @param frontOffset the offset from the center in the Y axis when the robot is facing north, positive is forwards
+    * @param rightOffset the offset from the center in the X axis when the robot is facing north, positive is right
+    * @param backOffset the offset from the center in the Y axis when the robot is facing north, positive is forwards
+    *
+    * ### Other Notes
+    *
+    * - For MCL, distance sensor offsets (x/y) can be set using setDistancesOffsets()
+    * 
+    * - If not using a sensor either use a nullptr or set the port to a non-existant port (Port 22 for example), while setting all variables related to the sensor to 0.0
+    *
+    * - Tuning for odom wheel size should be done before tuning PID's or offsets, information for tuning can be found on yogurtlib.com
+    *
+    * - Tuning for the odom offsets can be done using the tuneOffset() function, but this should be done after tuning wheel size
+*/
 struct OdomSensors {
     pros::Rotation* vertical = nullptr;
     double verticalDiameter = 2.75;   // inches
@@ -40,21 +71,17 @@ struct OdomSensors {
 
     IMU imus;
 
-    pros::Distance* leftD = nullptr;
-    pros::Distance* frontD = nullptr;
-    pros::Distance* rightD = nullptr;
-    pros::Distance* backD = nullptr;
+    DistanceSensors left = {nullptr, 0.0, false, true};
+    DistanceSensors front = {nullptr, 0.0, true, false};
+    DistanceSensors right = {nullptr, 0.0, true, true};
+    DistanceSensors back = {nullptr, 0.0, false, false};
 
-    double leftOffset = 0.0;
-    double rightOffset = 0.0;
-    double frontOffset = 0.0;
-    double backOffset = 0.0;
 
     OdomSensors(pros::Rotation* vertical, double verticalDiameter, double verticalOffset,
                 pros::Rotation* horizontal, double horizontalDiameter, double horizontalOffset,
                 yogurt::IMU imus, pros::Distance* leftD, pros::Distance* frontD,
-                pros::Distance* rightD, pros::Distance* backD, double leftOffset, double rightOffset,
-                double frontOffset, double backOffset);
+                pros::Distance* rightD, pros::Distance* backD, double leftOffset, double frontOffset,
+                double rightOffset, double backOffset);
 
 };
 
@@ -185,11 +212,21 @@ inline std::string entostr (MotionResult result) {
 }
 
 
-
-// Top-level drivetrain object: owns the drive hardware, PID controllers,
-// pose estimate, and every drive/turn/path-following motion. This is the
-// object autonomous code should talk to; it replaces the free functions in
-// drive.cpp/odometry.cpp with one cohesive class.
+/**
+    * @brief The drivetrain is the owner of everything in Yogurtlib, this is the constructor, use the setters to be able to modify the defualt values, instead of a long list of variables
+    *
+    * ### Required parts for the drivetrain (Physical hardware):
+    *
+    * - Drivetrain motors (see yogurt::DriveMotors for more documentation)
+    *
+    * - Odometry sensors (see yogurt::OdomSensors for more documentation)
+    *
+    * - Drive straight PID & Settle values (see yogurt::ControllerSettings for more documentation)
+    *
+    * - Turning PID & Settle values (see yogurt::ControllerSettings for more documentation)
+    *
+    * - Swing PID & Settle values (see yogurt:ControllerSettings for more documentation)
+*/
 class Drivetrain {
 public:
     DriveMotors motors;
@@ -225,10 +262,30 @@ public:
     // field with a working default, or configured via a setter below
     // (see setHeadingCorrectionGains) — call those after construction if you
     // want non-default behavior, instead of one long argument list.
-    Drivetrain(DriveMotors motors, OdomSensors odomSensors,
-               ControllerSettings driveSettings, ControllerSettings turnSettings, //Drive for driveStraight, turn for turnning
-               ControllerSettings swingSettings); //swing for sing settings
+    Drivetrain(DriveMotors motors, OdomSensors odomSensors, ControllerSettings driveSettings,
+               ControllerSettings turnSettings, ControllerSettings swingSettings); 
+    
+    // ---- Setup ----
+    std::vector<std::function<void(Drivetrain&)>> onCalibrated;
 
+    /**
+     * @brief Calibrate the imus, reset the pose and start the odom task
+     * 
+     * Call me once in initalize
+     *
+     * @param x the X value of the center of the robot
+     * @param y the Y value of the center of the robot
+     * @param heading the heading the robot faces in math standard (90 degrees = north, 0 degrees = east)
+     *
+     * ### Example Code:
+     * 
+     * ```cpp
+     * void intitalize(){
+     *    drivetrain.calibrate({0.0, 0.0, 90.0});
+     * }
+     *
+    */
+    void calibrate(Pose startPose = Pose(0.0, 0.0, 90.0));
     /**
      * @brief Set the PID values for heading correction with the driveStraight movement, used for maintaing straight drives or intentional angling
      * 
@@ -271,66 +328,12 @@ public:
     */
     void setBoomerangSettleGains(Settle drive = {1.0, 2.5, 250}, Settle turn = {1.5, 8.0, 250});
 
-    // ---- Setup ----
-    std::vector<std::function<void(Drivetrain&)>> onCalibrated;
-
-    /**
-     * @brief Calibrate the imus, reset the pose and start the odom task
-     * 
-     * Call me once in initalize
-     *
-     * @param x the X value of the center of the robot
-     * @param y the Y value of the center of the robot
-     * @param heading the heading the robot faces in math standard (90 degrees = north, 0 degrees = east)
-     *
-     * ### Example Code:
-     * 
-     * ```cpp
-     * void intitalize(){
-     *    drivetrain.calibrate({0.0, 0.0, 90.0});
-     * }
-     *
-    */
-    void calibrate(Pose startPose = Pose(0.0, 0.0, 90.0));
-
-    /**
-     * @brief cancels the current motion on its next loop, and allows next async motion to run
-     * 
-     * Also safe to call in any other functions (Such as disabled section to ensure the robot stops moving)
-     *
-     * ### Example Code:
-     * 
-     * ```cpp
-     * void autonomus(){
-     *    drivetrain.motion(a, b, c);
-     *    drivetrain.cancelMotion();
-     * }
-     *
-    */
-    void cancelMotion();
-    
-    /**
-    * @brief returns the drivetrais track width, used to pass the trackwidth into functions that require it (such as PurePursuit)
-    */
-    double getTrackWidth() const;
-
-    /**
-    * @brief stops the motor movement
-    * 
-    * WARNING, THIS WILL PHYSICALLY STOP THE MOTORS BUT NOT STOP THE FUNCTIONS THAT ARE CONTROLLING THE MOTORS AT THE TIME IT IS RAN, TO STOP THE FUNCTION , CALL 
-    *
-    * #### cancelMotion()
-    * 
-    * Errorenous use of this function may cause your program to freeze
-    */
-    void stop();
-
     // ---- Pose ----
 
     /**
      * @brief returns the current pose
     */
-    Pose getPose() const;
+    Pose getPose();
     
     /**
      * @brief set the pose of the robot, call at the start of each autonomus routine
@@ -346,6 +349,28 @@ public:
      * }
     */
     void setPose(const Pose& p);
+
+    void setDistancesOffsets(DistanceSensors& sensor, double xOffset, double yOffset);
+
+    /**
+     * @brief Distance sensor resets (DSR) for odometry based tracking, not normally recommended when MCL 
+     * 
+     * #### Blending, not teleport of pose, a single bad reading will not destroy an autonomus routine
+     * 
+     * @param distance the sensor you intend to use for the reset
+     * @param knownFeaturePos the known outer X/Y position of the feature, walls are measured to be 70.5 conistatly, THIS SHOULD BE WHAT THE SENSOR WILL MEASURE, NOT THE CENTER POSE OF THE GOAL/ETC
+     * @param resets how many times to reset using the blend, 3 seems to work well, each reset takes approx 68ms
+     * @param angleOffset the angle the distance sensor is relative to the known feature
+     *
+     * ### Example Code:
+     *
+     *```cpp
+     * void autonomus(){
+     *   drivetrain.distanceReset(frontDistance, -70.5, 3, 12.5);
+     * }
+    */
+    void distanceReset(DistanceSensors& distance, double knownFeaturePos, int resets = 3, double angleOffset = 0.0);
+
 
     // ---- Motions ----
 
@@ -544,22 +569,32 @@ public:
     MotionResult curve(Path path, int timeoutMs, CurveParams params = {}, bool async = false);
 
     /**
-     * @brief gets the actualSpeed of the drivetrain using motor encoder rpm's, helper function for purepursuit
-     */
-    double getActualSpeed (pros::MotorGroup& mg, double alpha, double& measured, double& lastTicks, std::uint32_t& lastStamp);
-
-   /**
-    * @brief takes in the speed from pure pursuit and converts to voltage to set the motors too, helper function for purepursuit
+     * @brief cancels the current motion on its next loop, and allows next async motion to run
+     * 
+     * Also safe to call in any other functions (Such as disabled section to ensure the robot stops moving)
+     *
+     * ### Example Code:
+     * 
+     * ```cpp
+     * void autonomus(){
+     *    drivetrain.motion(a, b, c);
+     *    drivetrain.cancelMotion();
+     * }
+     *
     */
-    static double speedToVoltage (double vel, double accel, double measured, const VoltageTerms& vt);
- 
-    /**
-     * @brief run this to tune the offset of odom pods, should be done after odom wheel diameters are tuned, ideally ran multiple times with the values averaged, especially helpful for all omniwheel set ups
-     */
-    void tuneOffset();
+    void cancelMotion();
 
-    //Asymetrical slew
-    static double slew(double target, double prev, double maxDelta);
+    /**
+    * @brief stops the motor movement
+    * 
+    * WARNING, THIS WILL PHYSICALLY STOP THE MOTORS BUT NOT STOP THE FUNCTIONS THAT ARE CONTROLLING THE MOTORS AT THE TIME IT IS RAN, TO STOP THE FUNCTION , CALL 
+    *
+    * #### cancelMotion()
+    * 
+    * Errorenous use of this function may cause your program to freeze
+    */
+    void stop();
+
 
     /**
      * @brief wait until the previous asyncronusly run function finishes, useful if you want to change pneumatics/etc while moving but dont want to start scoring/etc
@@ -589,6 +624,16 @@ public:
      */
     void waitUntil(double target);
 
+    /**
+    * @brief returns the drivetrais track width, used to pass the trackwidth into functions that require it (such as PurePursuit)
+    */
+    double getTrackWidth() const;
+
+    /**
+     * @brief run this to tune the offset of odom pods, should be done after odom wheel diameters are tuned, ideally ran multiple times with the values averaged, especially helpful for all omniwheel set ups
+     */
+    void tuneOffset();
+
 private:
     // No gains by default (no correction) until setHeadingCorrectionGains() is called.
     PID angularPID{0.0, 0.0, 0.0, 0.0}; // Heading correction
@@ -610,26 +655,43 @@ private:
     bool odomTaskStarted = false;
     std::atomic<bool> cancelRequested{false};
 
+    //----- Drivetrain Helper Functions -----
+
+    static double inchesPerTick(double wheelDiamIn);
+
+    //Asymetrical slew
+    static double slew(double target, double prev, double maxDelta);
+
     // Applies battery-voltage scaling, a slew-rate limit, and clamping — the
     // sequence every motor command in this class goes through before it's sent.
     double limitOutput(double v, double& prev, double minV, double maxV, double slewRate) const;
 
     bool chainExit (double error, int dir, double minV, double earlyExitRange);
 
-    static double inchesPerTick(double wheelDiamIn);
+    /**
+     * @brief gets the actualSpeed of the drivetrain using motor encoder rpm's, helper function for purepursuit
+     */
+    double getActualSpeed(pros::MotorGroup& mg, double alpha, double& measured, double& lastTicks, std::uint32_t& lastStamp);
+
+    /**
+    * @brief takes in the speed from pure pursuit and converts to voltage to set the motors too, helper function for purepursuit
+    */
+    static double speedToVoltage(double vel, double accel, double measured, const VoltageTerms& vt);
+
+    //------ Odometry Functions ------
 
     // Multi-IMU heading average, converted from compass to math convention.
     // Skips NaN/inf readings; falls back to the last known heading if every
     // IMU is unreadable.
     double readHeadingDeg() const;
 
-
     void odomLoop();
 
     void updateOdometry(double /*dt*/);
     
-    //Async variables
-    pros::RecursiveMutex mutex;            
+    //----- Async Set Up and Functions -----
+    pros::RecursiveMutex asyncMutex;
+    pros::Mutex poseMutex;     
     std::atomic<bool>   motionRunning{false};
     std::atomic<double> progress{0.0};
     bool progressPaused = false;

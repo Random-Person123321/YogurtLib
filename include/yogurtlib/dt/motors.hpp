@@ -19,6 +19,13 @@ public:
     pros::MotorGroup* left;
     pros::MotorGroup* right;
 
+    /**
+     * @brief The part of the drivetrain that owns the motors and is responsible for setting the voltages
+     * 
+     * @param left the motors on the left side of the drivetrain, setup in a PROS motor group
+     * @param right the motors on the right side of the drivetrain, setup in a PROS motor group
+     * @param wheelDiameter the diameter of the drivetrain wheels
+     */
     DriveMotors(pros::MotorGroup* left, pros::MotorGroup* right, double wheelDiameter);
 
     /**

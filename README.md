@@ -4,9 +4,9 @@
 
 # YogurtLib
 
-**YogurtLib is a C++ autonomous library for VEX V5 robots on PROS: It has features such as tracking-wheel and multi-IMU odometry, seperate PID controllers you can use, advanced/simple motions you can chain together, and a touchscreen UI with an auton selector for the brain as well as the ability to run motions asynchronously and queue them.**
+**YogurtLib is a C++ autonomous library for VEX V5 robots built with VS code PROS: It has features such as multi-IMU odometry, seperate PID controllers for seperate motions, the ability to chain and run motions asynchronously, and a touchscreen UI with an auton selector for the brain**
 
-<!-- Demo gif of robot working at worlds running previus version of YogurtLib -->
+
 <p align="center">
   <img src="docs/demo.gif" width="600" alt="Robot running a YogurtLib autonomous routine" />
 </p>
@@ -14,28 +14,28 @@
 <p align="center">
   <a href="https://github.com/Random-Person123321/YogurtLib/releases/latest"><b>⬇️ Download the newest release</b></a>
   &nbsp;·&nbsp;
-  <a href="https://yogurtlib.com/home"><b>🧭 Try the web tools (path planner, data visualizer)</b></a>
+  <a href="https://yogurtlib.com/home"><b>Try the web tools (path planner, data visualizer, PID tuner)</b></a>
 </p>
 
 ---
 
 ## About
 
-This is an effort made to make our own competition library, similar to(& inspired by) LemLib. Where we wanted our own autonomous functions with functionalities that we can control and actually understand by coding it ourselves while still following the princepts of Object Oriented Programming publish it as a template library for others to use.
+This is an effort made to make our own competition library. We wanted our own autonomous functions with functionalities that we can control and actually understand by coding it ourselves while still following the princepts of Object Oriented Programming and allowing us to publish it as a template library for others to use.
 
 ## Features
 
-- **Odometry from tracking wheels and up to three IMUs.** Pose runs in its own task at 10 ms. Headings from all IMUs are averaged on the unit circle, and a disconnected IMU is skipped, so one bad sensor doesn't throw off the whole run.
-- **Motions:** `driveStraight`, `turnToHeading`, `turnToPoint` and `swingToHeading` for the basics, plus `boomerang` (curve into a point and finish at a heading) and `curve` (pure pursuit along your own path points). Every motion returns why it ended: settled, timed out, cancelled, chained, stuck or lost. `driveToPoint` and `driveToPose` are being reworked on top of the new pure pursuit code.
-<!-- - **Six motion types:** `driveStraight`, `turnToHeading`, `turnToPoint`, `swingToHeading`, `driveToPoint`, and `driveToPose`. Each returns whether it settled, timed out, or was cancelled. -->
+- **Odometry from tracking wheels and exapandible number of IMUs.** Pose runs in its own task at 10 ms. Headings from all IMUs are averaged on the unit circle, and a disconnected IMU is skipped, so one bad sensor doesn't throw off the whole run.
+- **Motions:** `driveStraight`, `turnToHeading`, `turnToPoint` and `swingToHeading` for the basics, plus `boomerang` (curve into a point and finish at a heading) and `curve` (pure pursuit along your own path points). Every motion returns why it ended: settled, timed out, cancelled, chained, stuck or lost.
+
 - **Async motions and motion chaining.** Pass `async = true` to keep running other code (intakes, lifts) while the robot drives. Call `waitUntil(n)` to trigger something once the robot has covered `n` inches (or turned `n` degrees) of a motion. Set a `minVolt` above zero and the robot carries its speed into the next motion instead of stopping.
 - **Slew rate and static-friction feedforward on every motion.** Slew prevents wheel slip when the robot speeds up, and the kS push stops it stalling short of the target.
-- **Automatic tracking-wheel offset tuning.** `tuneOffset()` spins the robot both ways and measures where your tracking wheels actually sit, so you don't have to measure them with a ruler.
-- **Brain-screen UI.** Touchscreen pages show live X, Y, heading and each IMU's reading, plus an auton selector and a button to recalibrate the IMUs.
-- **Web tools at [yogurtlib.com](https://yogurtlib.com/home).** A Bézier path planner that exports paths in the library's format, a data visualizer for replaying pose logs, and an LVGL image converter for custom brain-screen images.
+- **Automatic tracking-wheel offset tuning.** `tuneOffset()` spins the robot both ways and measures where your tracking wheels actually sit, making it easier to tune robot's running both full ommi-wheel and traction wheel setups.
+- **Brain-screen UI.** Touchscreen pages show live X, Y, heading and each IMU's reading, plus an auton selector and a logo once the match starts.
+- **Web tools at [yogurtlib.com](https://yogurtlib.com/home).** support the library, from our pather than has been built custom for yogurtlib, a data visualizer that allows you to debug and tune paths faster, and a PID tuner based on the Zeigler-Nicholas method. More tools are added as required.
 
 ### In progress
-- **Autonomous Simulation** we are planning on making along side our custom pather our own digital autonomous simulation that can run in your browser using YogurtLib's API, it would also provide a demo/tuning groud for the upcoming MCL(see below)
+- **Autonomous Simulation** we are planning on making along side our custom pather our own digital autonomous simulation that can run in your browser using YogurtLib's API, it would also provide a demo/tuning groud for the upcoming MCL (see below)
 - **Monte Carlo Localization** using the four distance sensors and a beam sensor model to correct odometry drift against the field walls. It's being prototyped in a browser simulator first, then ported to the brain.
 
 ## Quick start
@@ -119,18 +119,15 @@ The example gains are from our own robot. You'll need to tune them for yours.
 ## How it works
 
 ### Voltage control
-We don't use the motors' built-in velocity PID (`move_velocity`). It reacts slowly and changes with load. Every motion sends voltage directly and uses odometry to check itself.
+We don't use the motors' built-in velocity PID (`move_velocity`). Instead, we have custom PID's that use mV, and can be tuned per robot to help increase reliability.
 
-`curve()` takes speed on a 0–127 scale (negative for reverse), like PROS's `move()`, where 127 is the fastest your robot actually drives. **Every other function uses millivolts**, so `maxVolt` and `minVolt` are out of `12000`.
+`curve()` takes speed on a 0–127 scale, where 127 is the fastest your robot actually drives. **Every other function uses millivolts**, so `maxVolt` and `minVolt` are out of `12000`.
 
 ### Odometry
 A background task updates the position every 10 ms. X and Y come from the tracking wheels. Heading comes only from the IMUs (up to three, averaged together), not the distance sensors. If an IMU disconnects, it's skipped. When the MCL functionality is added, will only correct X and Y to stop error building up over time.
 
 ### Every motion works the same way
-- Settings go in a `Params` struct. `-1` means "use the default."
-- Every motion returns why it ended (settled, timed out, cancelled, etc.).
-- "Settled" means the error is small, the robot has stopped moving, and it stays that way for `settleMs`.
-- Change any default with `drivetrain.attribute = value` (use `{}` for structs).
+- Required parameters for each function must be set, any optional setting's have defaults that we have found to work and can be changed with {.param = what you want}
 
 ### Chaining, async and `waitUntil`
 - **Chaining:** set `minVolt` (or `minSpeed` for `curve()`) above 0 and the robot keeps its speed into the next motion.
@@ -164,7 +161,7 @@ pros make template      # builds yogurtlib@1.0.0.zip, the same file shipped in r
 
 ## Credits
 
-- Built by Eric (team **210E**).
+- Built by Eric Yao and Eric Jones (team **210E**).
 - [PROS](https://pros.cs.purdue.edu/), the kernel and toolchain YogurtLib runs on.
 - [LVGL](https://lvgl.io/), which powers the brain-screen UI.
 - [LemLib](https://github.com/LemLib/LemLib), a big inspiration for the API style (0–127 speeds, motion chaining).

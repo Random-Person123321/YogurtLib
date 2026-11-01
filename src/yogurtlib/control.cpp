@@ -46,3 +46,8 @@ bool Settle::update(double err, double dt) {
 
     return goodMs >= settleMs;
 }
+
+ControllerSettings::ControllerSettings(double p, double i, double d, double maxInt,
+                                       double errTol, double velTol, int settleMs)
+                                       : kp(p), ki(i), kd(d), maxIntegral(maxInt),
+                                       errTol(errTol), velTol(velTol), settleMs(settleMs) {} 

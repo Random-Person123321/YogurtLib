@@ -54,8 +54,7 @@ void Drivetrain::tuneOffset() {
 
 // *** Angle Helpers ***
 double yogurt::wrapDeg(double a) {
-  while (a > 180.0) a -= 360.0;
-  while (a <= -180.0) a += 360.0;
+  a = std::remainder(a, 360.0);
   return a;
 }
 
@@ -69,13 +68,6 @@ double yogurt::deg2rad(double d) { return d * M_PI / 180.0; }
 double yogurt::rad2deg(double r) { return r * 180.0 / M_PI; }
 
 double yogurt::wrapRad(double a) {
-  while (a >  M_PI) a -= 2.0 * M_PI;
-  while (a <= -M_PI) a += 2.0 * M_PI;
+  a = std::remainder(a, 2.0 * M_PI);
   return a;
-}
-
-// Convert PROS get_heading() [0,360] to signed [-180,180]
-double yogurt::headingToSignedDeg(double h) {
-  if (h > 180.0) h -= 360.0;
-  return wrapDeg(h);
 }

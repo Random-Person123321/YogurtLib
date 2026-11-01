@@ -1,20 +1,15 @@
 #include "yogurtlib/dt/dt.hpp"
 using namespace yogurt;
 
-ControllerSettings::ControllerSettings(double p, double i, double d, double maxInt,
-                        double errTol, double velTol, int settleMs)
-                        : kp(p), ki(i), kd(d), maxIntegral(maxInt),
-                        errTol(errTol), velTol(velTol), settleMs(settleMs) {} 
-
 OdomSensors::OdomSensors(pros::Rotation* vertical, double verticalDiameter, double verticalOffset,
                          pros::Rotation* horizontal, double horizontalDiameter, double horizontalOffset,
                          yogurt::IMU imus, pros::Distance* leftD, pros::Distance* frontD,
-                         pros::Distance* rightD, pros::Distance* backD, double leftOffset, double rightOffset,
-                         double frontOffset, double backOffset) :
+                         pros::Distance* rightD, pros::Distance* backD, double leftOffset, double frontOffset,
+                         double rightOffset, double backOffset) :
                          vertical(vertical), verticalDiameter(verticalDiameter), verticalOffset(verticalOffset),
                          horizontal(horizontal), horizontalDiameter(horizontalDiameter), horizontalOffset(horizontalOffset),
-                         imus(imus), leftD(leftD), frontD(frontD), rightD(rightD), backD(backD),
-                         leftOffset(leftOffset), rightOffset(rightOffset), frontOffset(frontOffset), backOffset(backOffset) {}
+                         imus(imus) {left.sensor = leftD, left.xOffset = leftOffset, front.sensor = frontD, front.yOffset = frontOffset,
+                                    right.sensor = rightD, right.xOffset = rightOffset, back.sensor = leftD, back.yOffset = backOffset; }
 
 Drivetrain::Drivetrain(DriveMotors motors, OdomSensors odomSensors,
                        ControllerSettings driveSettings, ControllerSettings turnSettings, //Drive for driveStraight, turn for turnning
@@ -59,11 +54,22 @@ double Drivetrain::getTrackWidth() const { return trackWidth; }
 
 void Drivetrain::stop() { motors.stop(toBrakeMode(motors.left->get_brake_mode())); }
 
-Pose Drivetrain::getPose() const { return pose; }
+Pose Drivetrain::getPose() {
+    poseMutex.take();
+    Pose p = pose;
+    poseMutex.give();
+    return p;
+}
 
 void Drivetrain::setPose(const yogurt::Pose& p) {
-    pose = p;
-
+    poseMutex.take();
+    double currentH = p.theta;
+    pose.x = p.x;
+    pose.y = p.y;
+    
+    pose.theta = currentH + angleDiffDeg(pose.theta, currentH);
+    odom.imus.rebase();
+    
     double compassHeading = wrapDeg(90.0 - pose.theta);
     if (compassHeading < 0) compassHeading += 360.0;
     for (auto* imu : odom.imus.sensors) imu->set_heading(compassHeading);
@@ -71,6 +77,7 @@ void Drivetrain::setPose(const yogurt::Pose& p) {
     if (odom.vertical) lastVertTicks = odom.vertical->get_position();
     if (odom.horizontal) lastHorizTicks = odom.horizontal->get_position();
     lastHeadingDeg = pose.theta;
+    poseMutex.give();
 }
 
 //Asymetrical slew
@@ -96,7 +103,7 @@ void Drivetrain::waitUntil(double target) {
 
 // Async motion queuing functions
 void Drivetrain::requestMotion() {
-    mutex.take(TIMEOUT_MAX);
+    asyncMutex.take(TIMEOUT_MAX);
     if (motionDepth++ == 0){
         progress = 0.0;
         progressPaused = false;
@@ -108,5 +115,5 @@ void Drivetrain::requestMotion() {
 void Drivetrain::endMotion(){
     std::cout << "endMotion\n";
     if(--motionDepth == 0) motionRunning = false;
-    mutex.give();
+    asyncMutex.give();
 }
