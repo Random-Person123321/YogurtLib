@@ -137,10 +137,6 @@ void Drivetrain::updateOdometry(double /*dt*/) {
 //     }
 // }
 
-bool IMU::Imubad (double value) {
-    return std::isnan(value) || std::isinf(value);
-}
-
 void Drivetrain::distanceReset(DistanceSensors& distance, double knownFeaturePos, int resets, double angleOffset) { //The angle offset the sensor is mounted at (Pointint up = (+) vice verca)
     double offset = distance.isXaxis ? distance.xOffset : distance.yOffset;
     auto readInches = [&]() -> double {
@@ -179,4 +175,52 @@ void Drivetrain::distanceReset(DistanceSensors& distance, double knownFeaturePos
     pros::delay(50);
   }
   poseMutex.give();
+}
+
+bool IMU::Imubad (double value) {
+    return std::isnan(value) || std::isinf(value);
+}
+
+//READ
+
+void IMU::readSensors(double timeMs) {
+    const double maxStep = maxTurnDelta * timeMs / 1000.0;
+    for (int i = 0; i < sensors.size(); i++) imuData[i].valid = checkIMU(i, maxStep);
+}
+
+bool IMU::checkIMU(int i, double maxStep) {
+    auto& d = imuData[i];
+    if (sensors[i]->is_calibrating()) {
+        d.resync = true;
+        if (sensors.size() >= 3) { d.benched = true, d.goodstreak = 0; }
+        return false;
+    }
+    double raw = sensors[i]->get_rotation();
+    if (Imubad(raw)) { d.rejects++; d.resync = true; return false; }
+    if (d.resync) { d.last = raw; d.resync = false; return false; }
+    d.delta = (d.last - raw) * d.scale - d.bias;
+    d.last = raw;
+    if (std::fabs(d.delta) > maxStep) { d.rejects++; return false; };
+    return true;
+}
+
+// Combine
+bool IMU::fillVals() {
+    vals.clear();
+    for (auto &d : imuData) if (d.valid && !d.benched) vals.push_back(d.delta);
+    if (vals.empty()) for (auto&d : imuData) if (d.valid) vals.push_back(d.delta);
+    return !vals.empty();
+}
+
+double IMU::median() {
+    std::sort(vals.begin(), vals.end());
+    int n = vals.size();
+    if (n % 2 == 0) { // If even, take the average of the two in the middle for median
+        return (vals[n / 2 - 1] + vals[n / 2]) / 2.0;
+    }
+    else return vals[n / 2]; // Odd, return the middle value
+}
+
+double IMU::rejectionTolerance(double median) const {
+    return inertialRejectTolerance + inertialTurnLeniency * std::fabs(median);
 }

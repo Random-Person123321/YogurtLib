@@ -47,7 +47,7 @@ public:
      * }
      * ```
      */
-    void arcade(double power, double turn) const;
+    void arcade(double power, double turn, double expo = 1, double bias = 0.5) const;
 
     /**
      * @brief Tank style driver controls built into yogurtlib, for use in the driver control period of a match 
@@ -103,6 +103,7 @@ public:
 private:
     double wheelDiameter;   // inches
     mutable double lastL = 0.0, lastR = 0.0; //Records last voltage for both sides
+    double expoCurve(double value, double n);
 };
 
 } // namespace yogurt

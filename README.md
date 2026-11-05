@@ -4,7 +4,7 @@
 
 # YogurtLib
 
-**YogurtLib is a C++ autonomous library for VEX V5 robots built with VS code PROS: It has features such as multi-IMU odometry, seperate PID controllers for seperate motions, the ability to chain and run motions asynchronously, and a touchscreen UI with an auton selector for the brain**
+**YogurtLib is a C++ autonomous library for VEX V5 robots built with VS Code PROS: It has features such as multi-IMU odometry, separate PID controllers for separate motions, the ability to chain and run motions asynchronously, and a touchscreen UI with an auton selector for the brain**
 
 
 <p align="center">
@@ -21,18 +21,18 @@
 
 ## About
 
-This is an effort made to make our own competition library. We wanted our own autonomous functions with functionalities that we can control and actually understand by coding it ourselves while still following the princepts of Object Oriented Programming and allowing us to publish it as a template library for others to use.
+This is an effort made to make our own competition library. We wanted our own autonomous functions with functionalities that we can control and actually understand by coding it ourselves while still following the principles of Object Oriented Programming and allowing us to publish it as a template library for others to use.
 
 ## Features
 
-- **Odometry from tracking wheels and exapandible number of IMUs.** Pose runs in its own task at 10 ms. Headings from all IMUs are averaged on the unit circle, and a disconnected IMU is skipped, so one bad sensor doesn't throw off the whole run.
+- **Odometry from tracking wheels and expandable number of IMUs.** Pose runs in its own task at 10 ms. Headings from all IMUs are averaged on the unit circle, and a disconnected IMU is skipped, so one bad sensor doesn't throw off the whole run.
 - **Motions:** `driveStraight`, `turnToHeading`, `turnToPoint` and `swingToHeading` for the basics, plus `boomerang` (curve into a point and finish at a heading) and `curve` (pure pursuit along your own path points). Every motion returns why it ended: settled, timed out, cancelled, chained, stuck or lost.
 
 - **Async motions and motion chaining.** Pass `async = true` to keep running other code (intakes, lifts) while the robot drives. Call `waitUntil(n)` to trigger something once the robot has covered `n` inches (or turned `n` degrees) of a motion. Set a `minVolt` above zero and the robot carries its speed into the next motion instead of stopping.
 - **Slew rate and static-friction feedforward on every motion.** Slew prevents wheel slip when the robot speeds up, and the kS push stops it stalling short of the target.
-- **Automatic tracking-wheel offset tuning.** `tuneOffset()` spins the robot both ways and measures where your tracking wheels actually sit, making it easier to tune robot's running both full ommi-wheel and traction wheel setups.
+- **Automatic tracking-wheel offset tuning.** `tuneOffset()` spins the robot both ways and measures where your tracking wheels actually sit, making it easier to tune robots running both full omni-wheel and traction wheel setups.
 - **Brain-screen UI.** Touchscreen pages show live X, Y, heading and each IMU's reading, plus an auton selector and a logo once the match starts.
-- **Web tools at [yogurtlib.com](https://yogurtlib.com/home).** support the library, from our pather than has been built custom for yogurtlib, a data visualizer that allows you to debug and tune paths faster, and a PID tuner based on the Zeigler-Nicholas method. More tools are added as required.
+- **Web tools at [yogurtlib.com](https://yogurtlib.com/home).** support the library, from our pather that has been built custom for yogurtlib, a data visualizer that allows you to debug and tune paths faster, and a PID tuner based on the Ziegler–Nichols method. More tools are added as required.
 
 ### In progress
 - **Autonomous Simulation** we are planning on making along side our custom pather our own digital autonomous simulation that can run in your browser using YogurtLib's API, it would also provide a demo/tuning groud for the upcoming MCL (see below)
@@ -40,7 +40,7 @@ This is an effort made to make our own competition library. We wanted our own au
 
 ## Quick start
 
-You'll need the [PROS CLI](https://pros.cs.purdue.edu/v5/getting-started/index.html) and an existing PROS 4 project. Download `yogurtlib@1.0.0.zip` from the [latest release](https://github.com/Random-Person123321/YogurtLib/releases/latest) (and make sure it's in the root fo your PROS project folder ie. drag it into the folder of your project name), then run these from your project folder:
+You'll need the [PROS CLI](https://pros.cs.purdue.edu/v5/getting-started/index.html) and an existing PROS 4 project. Download `yogurtlib@1.0.0.zip` from the [latest release](https://github.com/Random-Person123321/YogurtLib/releases/latest) (and make sure it's in the root of your PROS project folder ie. drag it into the folder of your project name), then run these from your project folder:
 
 ```bash
 pros c fetch yogurtlib@1.0.0.zip
@@ -63,6 +63,8 @@ pros::Rotation vertical(4), horizontal(5);
 pros::Imu imu1(1), imu2(2), imu3(3);
 std::vector<pros::Imu*> imus = {&imu1, &imu2, &imu3};
 
+yogurt::UI uiobject; // Define the UI object, can be used if you desire as it is optional
+
 yogurt::OdomSensors odom(&vertical, 2.0, 0.25,      // vertical wheel: diameter, offset (in)
                          &horizontal, 2.0, -2.7,    // horizontal wheel: diameter, offset (in)
                          imus,
@@ -77,17 +79,26 @@ yogurt::ControllerSettings swing  (200.0, 0.0, 16.0, 3.0,  0.75,  8.0,   200);
 yogurt::Drivetrain drivetrain(motors, odom, lateral, turn, swing);
 
 void initialize() {
-    drivetrain.calibrate(yogurt::Pose(0, 0, 90));   // resets IMUs, starts odometry
+    drivetrain.calibrate(yogurt::Pose(0, 0, 90));   // resets IMUs, starts odometry 
+
+    //Init the screen, and pass in the drivetrain so it can access IMU's and pose. 
+    drivetrain.onCalibrated.push_back([](yogurt::Drivetrain& dt) {uiobject.screen_init(dt); });
+
+    //Place autons into the auton selector, one for each auton
+    //                                Name           File Path of Image        Default
+    uiobject.auton_list.push_back({"Left Corner" , "S:UI/pathimgs/lcorner.bin", false});
+    uiobject.auton_list.push_back({"Right Corner" , "S:UI/pathimgs/rcorner.bin", true});
 }
 
 void autonomous() {
-    drivetrain.driveStraight(24, 2000);           // 24 in forward
-    drivetrain.turnToHeading(0, 1000);            // face east
-    drivetrain.boomerang(48, 24, 90, 2500);       // arc into (48, 24), ending facing north
+  switch (uiobject.selected_auto) {
+    case 1 : leftCorner(); break;
+    case 2 : rightCorner(); break;
+  }
 }
 ```
 
-The example gains are from our own robot. You'll need to tune them for yours.
+The example gains are from our test robot. You'll need to tune them for yours.
 
 ### Running it
 
@@ -100,11 +111,11 @@ The example gains are from our own robot. You'll need to tune them for yours.
 <table align="center">
   <tr>
     <td align="center">
-      <img src="docs/tempAutoSelector.jpg" height="320" alt="YogurtLib's home screen on the V5 brain" /><br/>
+      <img src="docs/AutonSelector.jpeg" height="320" alt="YogurtLib's home screen on the V5 brain" /><br/>
       <sub>The brain UI home screen, with pages for the field / auton selector, the team logo, and live sensor data.</sub>
     </td>
     <td align="center">
-      <img src="docs/pather.png" height="320" alt="A path drawn in the yogurtlib.com Pather" /><br/>
+      <img src="docs/pather.jpg" height="320" alt="A path drawn in the yogurtlib.com Pather" /><br/>
       <sub>The <a href="https://yogurtlib.com/tools/custom-pather.html">Pather</a> on yogurtlib.com: draw a curve and export its points for <code>curve()</code>.</sub>
     </td>
   </tr>
@@ -119,18 +130,16 @@ The example gains are from our own robot. You'll need to tune them for yours.
 ## How it works
 
 ### Voltage control
-We don't use the motors' built-in velocity PID (`move_velocity`). Instead, we have custom PID's that use mV, and can be tuned per robot to help increase reliability.
+We don't use the motors' built-in velocity PID (`move_velocity`). Instead, we have custom PIDs that use mV, and can be tuned per robot to help increase reliability.
 
 `curve()` takes speed on a 0–127 scale, where 127 is the fastest your robot actually drives. **Every other function uses millivolts**, so `maxVolt` and `minVolt` are out of `12000`.
 
 ### Odometry
 A background task updates the position every 10 ms. X and Y come from the tracking wheels. Heading comes only from the IMUs (up to three, averaged together), not the distance sensors. If an IMU disconnects, it's skipped. When the MCL functionality is added, will only correct X and Y to stop error building up over time.
 
-### Every motion works the same way
-- Required parameters for each function must be set, any optional setting's have defaults that we have found to work and can be changed with {.param = what you want}
-
-### Chaining, async and `waitUntil`
-- **Chaining:** set `minVolt` (or `minSpeed` for `curve()`) above 0 and the robot keeps its speed into the next motion.
+### Parameters for motion functions
+- Required parameters for each function must be set, any optional setting's have defaults that we have found to work and can be changed with `drivetrain.motion(required params, {.optionalparam = what you want});` it is important to note that the optional params must be placed in order when setting multiple, see the motion documentation by hovering over the `drivetrain.motion` to see the order and what they do
+- **Chaining:** set `minVolt` (or `minSpeed` for `curve()`) above 0 and the robot keeps its speed into the next motion, also set `earlyExitRange` for the distance (inches or degrees) the motion can exit before reaching the end to maximize chaining effectiveness
 - **Async:** `async = true` runs the motion in the background. A second async motion waits its turn.
 - **`waitUntil(n)`:** runs your next line once the robot is `n` inches (or degrees) into the motion.
 
@@ -165,4 +174,4 @@ pros make template      # builds yogurtlib@1.0.0.zip, the same file shipped in r
 - [PROS](https://pros.cs.purdue.edu/), the kernel and toolchain YogurtLib runs on.
 - [LVGL](https://lvgl.io/), which powers the brain-screen UI.
 - [LemLib](https://github.com/LemLib/LemLib), a big inspiration for the API style (0–127 speeds, motion chaining).
-- Team 1712 Dawgma's *Implementation of the Adaptive Pure Pursuit Controller*, the basis for the path follower.
+- [Team 1712 Dawgma's *Implementation of the Adaptive Pure Pursuit Controller*](https://www.chiefdelphi.com/uploads/default/original/3X/b/e/be0e06de00e07db66f97686505c3f4dde2e332dc.pdf), the basis for the path follower.

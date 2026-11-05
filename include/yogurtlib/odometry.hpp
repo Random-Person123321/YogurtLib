@@ -30,9 +30,10 @@ public:
     double inertialRejectTolerance = 0.3; //Degrees IMU's are allowed to drift before being excluded from averaging
     double inertialTurnLeniency = 0.10; //Percent that tolerance scales based on fast turns
     double maxTurnDelta = 720.0; //Maximum speed a IMU can measure, if an IMU reads above this it is ignored, in D/s
-    // int inertialAllowedRejects = 10; //Maximum rejects before an IMU is presumed "dead", once they pass this limit we do not care about their data any more
-    double benchedImuDecay = 0.975; //The amount that each run decays the drift for IMU benching
-    double driftTolerance = 1.0;
+
+    double maxDriftRate = 0.5; // deg/s, if the IMU drifts faster than this than it is no longer considered for heading
+    double driftWindow = 2.0; // seconds, this is for how long during the run the drift check considers the IMU for
+
     int benchedImuGoodRuns = 100; //How long of a good streak any benched IMU's must have before being allowed to rejoin the averaging
     int benchedImuBadRuns = 25; //How long of a bad streak any IMU's require to become benched
     double biasLearnRate = 0.01;
@@ -43,17 +44,28 @@ public:
 
     IMU(std::vector<pros::Imu*> sensors) : sensors(sensors) {imuData.resize(sensors.size()); }
 
-    void calibrate(int timeoutMs = 3000) {
+    bool calibrate(int timeoutMs = 3000) {
         for(auto &s : sensors) s->reset(false);
         pros::delay(50);
-        for (int t = 50; t < timeoutMs; t+=10) pros::delay(10);
+        for (int t = 50; t < timeoutMs; t += 10) pros::delay(10);
 
+        bool allReady = true;
+        for (int i = 0; i < sensors.size(); i++) {
+            double scale = imuData[i].scale;
+            imuData[i] = ImuDataVars{}; // Clears old values for new ones
+            imuData[i].scale = scale; //   Reinputs old scale
+            imuData[i].resync = true; // Figure out how to do
+            if (sensors[i]->is_calibrating()) allReady = false;
+            sensors[i]->set_data_rate(5);
+        }
+        return allReady;
     }
 
     void rebase() {
         for (int i = 0; i < sensors.size(); i++) {
             double raw = sensors[i]->get_rotation();
             if (!Imubad(raw)) imuData[i].last = raw;
+            else imuData[i].resync = true;
         }
     }
 
@@ -76,7 +88,22 @@ public:
     bool Imubad (double value);
 
 private:
-
     std::vector<double> vals;
+    // Read Sensors
+    void readSensors(double timeMs);
+    bool checkIMU(int i, double maxStep);
+    // Combine
+    bool fillVals();
+    double median();
+    double rejectionTolerance(double median) const;
+
+    double acceptIMU(const ImuDataVars& d, double median, double tol) const;
+    double averageAccepted(double median, double tol) const;
+    // Health
+    void updateHealth(double median, double tol, double timeMs);
+    void markGood(ImuDataVars& d);
+    void markBad(ImuDataVars& d);
+    // Bias
+    void learnBias();
 };
 }; //namespace yogurt

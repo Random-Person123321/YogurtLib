@@ -115,6 +115,12 @@ struct PursuitProfile {
     double speedAlpha = 0.4;
 };
 
+enum TurnDirection {
+    CLOCKWISE,
+    COUNTERCLOCKWISE,
+    AUTO
+};
+
 struct DriveParams {
     double maxVolt = -1.0;
     double minVolt = 0.0;
@@ -128,6 +134,7 @@ struct TurnToHeadParams {
     double minVolt = 0.0;
     double earlyExitRange = 0.0;
     double slewRate = -1.0; 
+    TurnDirection dir = TurnDirection::AUTO;
 };
 
 struct TurnToPointParams {
@@ -136,6 +143,7 @@ struct TurnToPointParams {
     bool reversed = false;
     double earlyExitRange = 0.0;
     double slewRate = -1.0;
+    TurnDirection dir = TurnDirection::AUTO;
 };
 
 struct SwingToHeadingParams {
@@ -143,6 +151,7 @@ struct SwingToHeadingParams {
     double minVolt = 0.0;
     double earlyExitRange = 0.0;
     double slewRate = -1.0;
+    TurnDirection dir = TurnDirection::AUTO;
 };
 
 struct BoomParams {
@@ -405,6 +414,7 @@ public:
      * @param minVolt the minimum speed in mV the robot will slow down to when decelerating
      * @param earlyExitRange how close the the end a motion chain can be activated, Both this and minVolt need values for a chain to be executed
      * @param slewRate the rate at which the motion can accelerate in mV per 10 ms to prevent wheel slip
+     * @param TurnDirection the direction that the robot should turn, AUTO by default
      * @param async if the motion should run asyncronusly and be added to the motion queue or wait for the last motion to finish
      *
      * ### Example Code:
@@ -428,13 +438,14 @@ public:
      * @param reversed if the front or back of the robot should turn to face the point (True = back, false = front)
      * @param earlyExitRange how close the the end a motion chain can be activated, Both this and minVolt need values for a chain to be executed
      * @param slewRate the rate at which the motion can accelerate in mV per 10 ms to prevent wheel slip
+     * @param TurnDirection the direction that the robot should turn, AUTO by default
      * @param async if the motion should run asyncronusly and be added to the motion queue or wait for the last motion to finish
      *
      * ### Example Code:
      * 
      * ```cpp
      * void autonomus(){
-     *    drivetrain.turnToPoint(-48.0, 24.0, 1000, {.reversed = true}, true);
+     *    drivetrain.turnToPoint(-48.0, 24.0, 1000, {.reversed = true, .TurnDirection = TurnDirection::CLOCKWISE}, true);
      * }
      *
     */
@@ -450,6 +461,7 @@ public:
      * @param minVolt the minimum speed in mV the robot will slow down to when decelerating
      * @param earlyExitRange how close the the end a motion chain can be activated, Both this and minVolt need values for a chain to be executed
      * @param slewRate the rate at which the motion can accelerate in mV per 10 ms to prevent wheel slip
+     * @param TurnDirection the direction that the robot should turn, AUTO by default
      * @param async if the motion should run asyncronusly and be added to the motion queue or wait for the last motion to finish
      *
      * ### Example Code:
@@ -568,6 +580,9 @@ public:
      */
     MotionResult curve(Path path, int timeoutMs, CurveParams params = {}, bool async = false);
 
+    //Asymetrical slew
+    static double slew(double target, double prev, double maxDelta);
+
     /**
      * @brief cancels the current motion on its next loop, and allows next async motion to run
      * 
@@ -659,8 +674,6 @@ private:
 
     static double inchesPerTick(double wheelDiamIn);
 
-    //Asymetrical slew
-    static double slew(double target, double prev, double maxDelta);
 
     // Applies battery-voltage scaling, a slew-rate limit, and clamping — the
     // sequence every motor command in this class goes through before it's sent.
