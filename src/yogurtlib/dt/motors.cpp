@@ -18,33 +18,47 @@ void DriveMotors::arcade(double power, double turn, double expo, double bias) co
     // Get the abs and clamp between good values
     expo = std::fabs(expo);
     bias = std::fabs(bias);
-    expo = std::clamp(expo, 0.2, 127);
-    bias = std::clamp(bias, 0, 1);
+    expo = std::clamp(expo, 0.1, 146.0);
+    bias = std::clamp(bias, 0.0, 1.0);
 
-    power = expoCurve(power, expo);
-    turn = expoCurve(turn, expo);
+    power = expoCurve(std::clamp(power, -127.0, 127.0), expo);
+    turn = expoCurve(std::clamp(turn, -127.0, 127.0), expo);
 
-    double left = power + turn;
-    double right = power - turn;
+    double leftp = power + turn;
+    double rightp = power - turn;
 
-    double max = std::max(std::fabs(left), std::fabs(right));
+    double maxV = std::max(std::fabs(leftp), std::fabs(rightp));
 
-    if (max > 127) {
-        double cap = 127 + (bias - 1.0) * std::fabs(turn);
+    if (maxV > 127.0) {
+        double limitTurn = std::copysign(127.0 - std::fabs(power), turn);
+        double lDrive = power + limitTurn;
+        double rDrive = power - limitTurn;
 
-        double scale = cap / (max - std::fabs(turn) * bias);
-        
-        left = left * scale;
-        right = right * scale;
+        double limitPower = std::copysign(127.0 - std::fabs(turn), power);
+        double lTurn = limitPower + turn;
+        double rTurn = limitPower - turn;
+
+        leftp  = lDrive * (1.0 - bias) + lTurn * bias;
+        rightp = rDrive * (1.0 - bias) + rTurn * bias;
     }
 
-    left->move(left);
-    right->move(right);
+    left->move(static_cast<std::int32_t>(std::lround(std::clamp(leftp, -127.0, 127.0))));
+    right->move(static_cast<std::int32_t>(std::lround(std::clamp(rightp, -127.0, 127.0))));
 }
 
-void DriveMotors::tank(double leftPower, double rightPower) const {
-    left->move(std::clamp(leftPower, -127.0, 127.0));
-    right->move(std::clamp(rightPower, -127.0, 127.0));
+void DriveMotors::tank(double leftPower, double rightPower, double expo) const {
+    expo = std::fabs(expo);
+    expo = std::clamp(expo, 0.1, 146.0);
+
+
+    leftPower = expoCurve(std::clamp(leftPower, -127.0, 127.0), expo);
+    rightPower = expoCurve(std::clamp(rightPower, -127.0, 127.0), expo);
+
+    leftPower = std::clamp(leftPower, -127.0, 127.0);
+    rightPower = std::clamp(rightPower, -127.0, 127.0);
+
+    left->move(static_cast<std::int32_t>(std::lround(leftPower)));
+    right->move(static_cast<std::int32_t>(std::lround(rightPower)));
 }
 
 void DriveMotors::setBrakeMode(BrakeMode mode) const {
@@ -63,8 +77,9 @@ std::pair<double, double> DriveMotors::getLastVolt() const {return std::make_pai
 
 double DriveMotors::getWheelDiameter() const { return wheelDiameter; }
 
-double expoCurve(double value, double n) {
-    double numi = value * std::fabs(std::pow(std::fabs(value), n - 1));
-    double denom = std::fabs(std::pow(127, n - 1));
+double DriveMotors::expoCurve(double value, double n) const {
+    if (value == 0.0) return 0.0; // If the value is zero return a zero
+    double numi = value * std::pow(std::fabs(value), n - 1.0);
+    double denom = std::pow(127.0, n - 1);
     return numi / denom;
 }

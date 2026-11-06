@@ -36,13 +36,19 @@ public:
     /**
      * @brief Aracade style driver controls built into yogurtlib, for use in the driver control period of a match 
      * 
+     * @param power the forwards and backwards power
+     * @param turn the turning power
+     * @param expo the controller for exponential driving, 1.0 = linear driving, closer to 0 will make the robot accelerate to higher speeds with less stick diflection, while values above 1.0 will make deflection near the center softer
+     * @param bias how much turning or driving should take priority if they excceed full speed, ranges between 0 - 1 where 0 is all driving, 1 is all turning
+     * 
      * ### Example code:
      * 
      * ```cpp
      * void opcontrol() {
      *     while(true){
      *         drivetrain.motors.arcade(master.get_analog(analog_left_Y), 
-     *                                  master.get_analog(analog_right_X);
+     *                                  master.get_analog(analog_right_X),
+     *                                  3.0);
      *     }
      * }
      * ```
@@ -52,19 +58,23 @@ public:
     /**
      * @brief Tank style driver controls built into yogurtlib, for use in the driver control period of a match 
      * 
+     * @param leftPower the power that should be given to the left motors
+     * @param rightPower the power that should be given to the right motors
+     * @param expo the controller for exponential driving, 1.0 = linear driving, closer to 0 will make the robot accelerate to higher speeds with less stick diflection, while values above 1.0 will make deflection near the center softer
+     *   
      * ### Example code:
      * 
      * ```cpp
      * void opcontrol() {
      *     while(true){
      *         drivetrain.motors.tank(master.get_analog(analog_left_Y), 
-     *                                master.get_analog(analog_right_Y);
+     *                                master.get_analog(analog_right_Y),
+     *                                3.5);
      *     }
      * }
      * ```
      */
-
-    void tank(double leftPower, double rightPower) const;
+    void tank(double leftPower, double rightPower, double expo = 1) const;
 
     /**
      * @brief Sets the brakemode of the motors, choose between:
@@ -79,7 +89,7 @@ public:
      *
      * ```cpp
      * void initialize(){
-     *    drivetrain.motors.setBrakeMode(yogurt:BrakeMode::Coast);
+     *    drivetrain.motors.setBrakeMode(yogurt::BrakeMode::Coast);
      * }
      */
     void setBrakeMode(BrakeMode mode) const;
@@ -103,7 +113,7 @@ public:
 private:
     double wheelDiameter;   // inches
     mutable double lastL = 0.0, lastR = 0.0; //Records last voltage for both sides
-    double expoCurve(double value, double n);
+    double expoCurve(double value, double n) const;
 };
 
 } // namespace yogurt
