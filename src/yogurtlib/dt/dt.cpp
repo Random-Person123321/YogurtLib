@@ -69,7 +69,6 @@ void Drivetrain::setPose(const yogurt::Pose& p) {
 
     if (odom.vertical) lastVertTicks = odom.vertical->get_position();
     if (odom.horizontal) lastHorizTicks = odom.horizontal->get_position();
-    lastHeadingDeg = pose.theta;
     poseMutex.give();
 }
 

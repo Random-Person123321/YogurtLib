@@ -45,6 +45,14 @@ public:
     int acceptedIMUs() const; // IMUs that are giving both valid readings and currently not benched(agrees with rest)
 
     bool isBenched(int i) const;
+
+    bool isValid(int i) const;
+
+    double drift(int i) const;
+
+    double getHeading(int i) const;
+
+    int count() const;
 private:
     friend class Drivetrain;
 

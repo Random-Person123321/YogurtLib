@@ -2,31 +2,40 @@
 #include "yogurtlib/misc.hpp"
 using namespace yogurt;
 
-double Drivetrain::readHeadingDeg() const {
-    double sumSin = 0.0, sumCos = 0.0;
-    int n = 0;
-    for (auto* imu : odom.imus.sensors) {
-        double raw = imu->get_heading();
-        if (std::isnan(raw) || std::isinf(raw)) continue;
-        double mathDeg = wrapDeg(90.0 - raw);
-        sumSin += std::sin(deg2rad(mathDeg));
-        sumCos += std::cos(deg2rad(mathDeg));
-        ++n;
-    }
-    if (n == 0) return pose.theta;
-    return wrapDeg(rad2deg(std::atan2(sumSin, sumCos)));
-}
+// double Drivetrain::readHeadingDeg() const {
+//     double sumSin = 0.0, sumCos = 0.0;
+//     int n = 0;
+//     for (auto* imu : odom.imus.sensors) {
+//         double raw = imu->get_heading();
+//         if (std::isnan(raw) || std::isinf(raw)) continue;
+//         double mathDeg = wrapDeg(90.0 - raw);
+//         sumSin += std::sin(deg2rad(mathDeg));
+//         sumCos += std::cos(deg2rad(mathDeg));
+//         ++n;
+//     }
+//     if (n == 0) return pose.theta;
+//     return wrapDeg(rad2deg(std::atan2(sumSin, sumCos)));
+// }
 
 void Drivetrain::odomLoop() {
     const int stepMs = 10;
     std::uint32_t prevTime = pros::millis();
+    int logCount = 0;
     while (true) {
         updateOdometry(stepMs / 1000.0);
+        if (++logCount % 10 == 0) {
+        printf("%u,%.2f,%d", pros::millis(), pose.theta, lastStill);
+        for (int i = 0; i < odom.imus.count(); i++) {
+            printf(",%d,%d,%.3f", odom.imus.isValid(i), odom.imus.isBenched(i), odom.imus.drift(i));
+            printf(",%.2lf", odom.imus.getHeading(i));
+        }
+        printf("\n");
+}
         pros::Task::delay_until(&prevTime, stepMs);
     }
 }
 
-void Drivetrain::updateOdometry(double /*dt*/) {
+void Drivetrain::updateOdometry(double dt) {
     const double V_IN_PER_TICK = inchesPerTick(odom.verticalDiameter);
     const double H_IN_PER_TICK = inchesPerTick(odom.horizontalDiameter);
 
@@ -36,28 +45,28 @@ void Drivetrain::updateOdometry(double /*dt*/) {
     if (std::isnan(hNow) || std::isinf(hNow)) hNow = lastHorizTicks;
 
     poseMutex.take();
-    double headDeg = odom.imus.sensors.empty() ? pose.theta : readHeadingDeg();
-    double dThetaDeg = angleDiffDeg(headDeg, lastHeadingDeg);
-    double dTheta = deg2rad(dThetaDeg);
 
     double dV = (vNow - lastVertTicks) * V_IN_PER_TICK;
     double dH = (hNow - lastHorizTicks) * H_IN_PER_TICK;
 
+    bool still = isStill(dV, dH, dt);
+    double dThetaDeg = odom.imus.fuseIMUs(dt * 1000.0, still);
+    double dTheta = deg2rad(dTheta);
+
     double forward = dV - (odom.verticalOffset * dTheta);
     double left = dH - (odom.horizontalOffset * dTheta);
 
-    double mid = deg2rad(lastHeadingDeg) + dTheta * 0.5;
+    double mid = deg2rad(pose.theta) + dTheta * 0.5; // Last cycle's reading averaged with the current cycle's delta
     double cosT = std::cos(mid);
     double sinT = std::sin(mid);
 
     pose.x += forward * cosT - left * sinT;
     pose.y += forward * sinT + left * cosT;
-    pose.theta = headDeg;
+    pose.theta += dThetaDeg; // Unwrapped internally
     poseMutex.give();
 
     lastVertTicks = vNow;
     lastHorizTicks = hNow;
-    lastHeadingDeg = headDeg;
 }
 
 
@@ -117,6 +126,26 @@ bool IMU::isBenched(int i) const {
     return imuData[i].benched;
 }
 
+bool IMU::isValid(int i) const {
+    if (i < 0 || i >= imuData.size()) return false;
+    return imuData[i].valid;
+}
+
+double IMU::drift(int i) const {
+    if (i < 0 || i >= imuData.size()) return 0.0;
+    return imuData[i].drift;
+}
+
+// Temporary for now
+double IMU::getHeading(int i) const {
+    if (i < 0 || i >= imuData.size()) return wrapDeg(lastFused);
+    return wrapDeg(imuData[i].last);
+}
+
+int IMU::count() const {
+    return sensors.size();
+}
+
 double IMU::fuseIMUs(double timeMs, bool still) {
     if (sensors.empty()) return lastFused = 0.0;
     
@@ -166,6 +195,16 @@ bool IMU::anyCalibrating() {
 
 bool IMU::Imubad (double value) {
     return std::isnan(value) || std::isinf(value);
+}
+
+bool Drivetrain::isStill(double dV, double dH, double dt) {
+    auto [l, r] = motors.getLastVolt();
+    bool quiet = l == 0.0 && r == 0.0
+                 && std::fabs(dV) < stillWheelTol
+                 && std::fabs(dH) < stillWheelTol;
+    if (!quiet) stillMs = 0;
+    else if (stillMs < stillTime) stillMs += (int) (dt * 1000.0);
+    return stillMs >= stillTime;
 }
 
 //READ
@@ -229,13 +268,13 @@ double IMU::averageAccepted(double median, double tol) const {
 
 // Health
 void IMU::updateHealth(double median, double tol, double timeMs) {
-    const int dt = timeMs / 1000.0;
+    const double dt = timeMs / 1000.0;
     const double decay = 1.0 - dt / driftWindow;
     const double driftLimit = maxDriftRate * driftWindow;
     for (auto &d : imuData) {
         if (!d.valid) continue;
-        // Decays the drift overtime and add the new drift from the known blended value
-        d.drift = d.drift * decay + lastFused - d.delta;
+        // Decays the drift over time and add the new drift from the known blended value
+        d.drift = d.drift * decay + d.delta - lastFused;
         bool good = acceptIMU(d, median, tol) && std::fabs(d.drift) <= driftLimit;
         if (good) markGood(d);
         else markBad(d);
@@ -244,7 +283,7 @@ void IMU::updateHealth(double median, double tol, double timeMs) {
 
 void IMU::markGood(ImuDataVars& d) {
     if (d.badstreak > 0) d.badstreak--;
-    if (d.benched && ++d.badstreak >= benchedImuGoodRuns) {
+    if (d.benched && ++d.goodstreak >= benchedImuGoodRuns) {
         d.benched = false;
         d.goodstreak = 0;
     }
@@ -252,7 +291,7 @@ void IMU::markGood(ImuDataVars& d) {
 
 void IMU::markBad(ImuDataVars& d) {
     d.goodstreak = 0;
-    d.rejects ++;
+    d.rejects++;
     if(!d.benched && ++d.badstreak >= benchedImuBadRuns){
         d.benched = true;
         d.badstreak = 0;

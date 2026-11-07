@@ -21,6 +21,7 @@ class UI {
     static bool do_data_updates;
     static bool error_screen_loaded;
     static int current_auto;
+    static int imuNum;
     static bool auto_check;
     
     // DECLARE SCREENS 
@@ -29,7 +30,11 @@ class UI {
     static lv_obj_t* data_scr;
     static lv_obj_t* auton_scr;
     static lv_obj_t* error_scr;
-    static lv_obj_t* bg;
+
+    static lv_obj_t* home_bg;
+    static lv_obj_t* data_bg;
+    static lv_obj_t* auto_bg;
+    static lv_obj_t* logo_bg;
 
     // Home screen buttons 
     static lv_obj_t* logo_btn;
@@ -66,6 +71,7 @@ class UI {
     static void select_auto(lv_event_t* e);
     static void next_auto(lv_event_t* e);
     static void last_auto(lv_event_t* e);
+    static void sync_Auton_Selector();
     //LVGL task to update the IMU data on the data screen
     static void update_data(lv_timer_t* t);
     static void IMUcalibrate(lv_event_t* e);

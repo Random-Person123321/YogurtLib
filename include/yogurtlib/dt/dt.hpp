@@ -362,7 +362,11 @@ public:
      * }
     */
     void setPose(const Pose& p);
-
+    
+    void recalibrateIMUs() {
+        odom.imus.calibrate();
+    }
+    
     void setDistancesOffsets(DistanceSensors& sensor, double xOffset, double yOffset);
 
     /**
@@ -574,13 +578,16 @@ public:
      * @param minSpeed the minimum speed the robot will slow down to when decelerating (scale of 0 - 127)
      * @param earlyExitRange how close the the end a motion chain can be activated, Both this and minSpeed need values for a chain to be executed
      * @param slewRate the rate at which the motion can accelerate in mV per 10 ms to prevent wheel slip
-     *  ### Example Code:
+     *
+     * ### Example Code:
      * 
      * ```
      * void autonomus() {
      *   drivetrain.curve(loop, 2000, {.reversed = true});
      * } 
      * ```
+     * @return Return the reason the motion ended (Ex, settled, timeout), use drivetrain.entostr to print the reason
+     * Usefull for debugging auton paths
      */
     MotionResult curve(Path path, int timeoutMs, CurveParams params = {}, bool async = false);
 
@@ -669,10 +676,11 @@ private:
     double trackWidth = 0.0; // inches, center-to-center of left/right wheels
     double lastVertTicks = 0.0;
     double lastHorizTicks = 0.0;
-    double lastHeadingDeg = 0.0;
 
     bool odomTaskStarted = false;
     std::atomic<bool> cancelRequested{false};
+
+    
 
     //----- Drivetrain Helper Functions -----
 
@@ -700,11 +708,15 @@ private:
     // Multi-IMU heading average, converted from compass to math convention.
     // Skips NaN/inf readings; falls back to the last known heading if every
     // IMU is unreadable.
-    double readHeadingDeg() const;
-
+    // double readHeadingDeg() const;
+    int stillMs = 0.0;
+    bool lastStill = false;
+    
     void odomLoop();
 
     void updateOdometry(double /*dt*/);
+
+    bool isStill(double dV, double dH, double dt);
     
     //----- Async Set Up and Functions -----
     pros::RecursiveMutex asyncMutex;

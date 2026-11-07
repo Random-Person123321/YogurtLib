@@ -1,4 +1,5 @@
 #include "yogurtlib/UI.hpp"
+#include "yogurtlib/misc.hpp"
 using namespace yogurt;
 
 Drivetrain* UI::drivetrainRef = nullptr;
@@ -13,7 +14,11 @@ lv_obj_t* UI::logo_scr = nullptr;
 lv_obj_t* UI::data_scr = nullptr;
 lv_obj_t* UI::auton_scr = nullptr;
 lv_obj_t* UI::error_scr = nullptr;
-lv_obj_t* UI::bg = nullptr;
+
+lv_obj_t* UI::home_bg = nullptr;
+lv_obj_t* UI::data_bg = nullptr;
+lv_obj_t* UI::auto_bg = nullptr;
+lv_obj_t* UI::logo_bg = nullptr;
 
 lv_obj_t* UI::logo_btn = nullptr;
 lv_obj_t* UI::data_btn = nullptr;
@@ -40,14 +45,11 @@ lv_obj_t* UI::auton_name = nullptr;
 std::vector<AutoSelection> UI::auton_list = {};
 int UI::selected_auto = 0;
 int UI::current_auto = 0;
+int UI::imuNum = 0;
 
 //IMU Calibration
 void UI::IMUcalibrate(lv_event_t* e) {
-    for (auto* imu : drivetrainRef->odom.imus.sensors) {
-        imu->reset(false);
-        pros::delay(10); //10ms delay
-    }
-    pros::delay(2000);
+    drivetrainRef->recalibrateIMUs();
 }
 
 void UI::screen_init(Drivetrain& dt){
@@ -59,8 +61,8 @@ void UI::screen_init(Drivetrain& dt){
     auton_scr = lv_obj_create(NULL);
     error_scr = lv_obj_create(NULL);
 
-    bg = lv_image_create(home_scr);
-    lv_image_set_src(bg, "S:UI/home.bin");
+    home_bg = lv_image_create(home_scr);
+    lv_image_set_src(home_bg, "S:UI/home.bin");
 
     // HOME SCREEN BUTTONS
     
@@ -83,8 +85,8 @@ void UI::screen_init(Drivetrain& dt){
     lv_obj_add_event_cb(auton_btn, auton_screen, LV_EVENT_CLICKED, NULL);
 
     // LOGO SCREEN
-    bg = lv_image_create(logo_scr);
-    lv_image_set_src(bg, "S:UI/logo.bin");
+    logo_bg = lv_image_create(logo_scr);
+    lv_image_set_src(logo_bg, "S:UI/logo.bin");
     logo_home_btn = lv_button_create(logo_scr);
     lv_obj_remove_style_all(logo_home_btn);
     lv_obj_set_size(logo_home_btn, 61, 113);
@@ -92,8 +94,8 @@ void UI::screen_init(Drivetrain& dt){
     lv_obj_add_event_cb(logo_home_btn, home_screen, LV_EVENT_CLICKED, NULL);
 
     // DATA SCREEN
-    bg = lv_image_create(data_scr);
-    lv_image_set_src(bg, "S:UI/data.bin");
+    data_bg = lv_image_create(data_scr);
+    lv_image_set_src(data_bg, "S:UI/data.bin");
 
     //Home Button
     data_home_btn = lv_button_create(data_scr);
@@ -142,8 +144,8 @@ void UI::screen_init(Drivetrain& dt){
     lv_timer_create(update_data, 100, NULL);
 
     //AUTON SCREEN STUFF
-    bg = lv_image_create(auton_scr);
-    lv_image_set_src(bg, "S:UI/auton.bin");
+    auto_bg = lv_image_create(auton_scr);
+    lv_image_set_src(auto_bg, "S:UI/auton.bin");
     //Set the feild image
     field = lv_image_create(auton_scr);
     //Dont set field image cause the function and calling of the screen will handle it
@@ -184,10 +186,9 @@ void UI::screen_init(Drivetrain& dt){
     lv_imgbtn_set_src(select_btn, LV_IMGBTN_STATE_CHECKED_RELEASED, NULL, "S:UI/selected.bin", NULL);
     lv_obj_align(select_btn, LV_ALIGN_TOP_LEFT, 322, 70);
     lv_obj_add_event_cb(select_btn, select_auto, LV_EVENT_CLICKED, this);
-    // lv_obj_add_event_cb(btn, event_handler, LV_EVENT_CLICKED, this);
     
-    
-
+    //Get how many IMU's are connected
+    imuNum = drivetrainRef->odom.imus.count();
 
     //Load the home screen
     lv_screen_load(home_scr);
@@ -233,13 +234,7 @@ void UI::next_auto(lv_event_t* e){
     if (current_auto >= auton_list.size()){
         current_auto = 0;
     }
-    if (auton_list[current_auto].selected){
-        lv_imgbtn_set_state(select_btn, LV_IMGBTN_STATE_CHECKED_RELEASED);
-    } else {
-        lv_imgbtn_set_state(select_btn, LV_IMGBTN_STATE_RELEASED);
-    }
-    lv_label_set_text(auton_name, auton_list[current_auto].name);
-    lv_image_set_src(field, auton_list[current_auto].file);
+    sync_Auton_Selector();
 }
 
 void UI::last_auto(lv_event_t* e){
@@ -247,6 +242,10 @@ void UI::last_auto(lv_event_t* e){
     if (current_auto < 0){
         current_auto = auton_list.size() -1;
     }
+    sync_Auton_Selector();
+}
+
+void UI::sync_Auton_Selector(){
     if (auton_list[current_auto].selected){
         lv_imgbtn_set_state(select_btn, LV_IMGBTN_STATE_CHECKED_RELEASED);
     } else {
@@ -261,18 +260,18 @@ void UI::update_data(lv_timer_t* t){
     if (do_data_updates == true){
         char buf[13];
 
-        if (drivetrainRef->odom.imus.sensors.size() >= 1){
-            snprintf(buf, sizeof(buf), "IMU1: %.2f", drivetrainRef->odom.imus.sensors[0]->get_heading());
+        if (imuNum >= 1){
+            snprintf(buf, sizeof(buf), "IMU1: %.2f", drivetrainRef->odom.imus.getHeading(0));
             lv_label_set_text(imu1_lbl, buf);
         }
         
-        if (drivetrainRef->odom.imus.sensors.size() >= 2){
-            snprintf(buf, sizeof(buf), "IMU2: %.2f", drivetrainRef->odom.imus.sensors[1]->get_heading());
+        if (imuNum >= 2){
+            snprintf(buf, sizeof(buf), "IMU2: %.2f", drivetrainRef->odom.imus.getHeading(1));
             lv_label_set_text(imu2_lbl, buf);
         }
         
-        if (drivetrainRef->odom.imus.sensors.size() >= 3){
-            snprintf(buf, sizeof(buf), "IMU3: %.2f", drivetrainRef->odom.imus.sensors[2]->get_heading());
+        if (imuNum >= 3){
+            snprintf(buf, sizeof(buf), "IMU3: %.2f", drivetrainRef->odom.imus.getHeading(2));
             lv_label_set_text(imu3_lbl, buf);
         }
 
@@ -283,7 +282,7 @@ void UI::update_data(lv_timer_t* t){
         snprintf(buf, sizeof(buf), "Y: %.2f", drivetrainRef->getPose().y);
         lv_label_set_text(pose_y_lbl, buf);
 
-        snprintf(buf, sizeof(buf), "H: %.2f", drivetrainRef->getPose().theta);
+        snprintf(buf, sizeof(buf), "H: %.2f", wrapDeg(drivetrainRef->getPose().theta));
         lv_label_set_text(heading_lbl, buf);
     }
     if (auto_check){
