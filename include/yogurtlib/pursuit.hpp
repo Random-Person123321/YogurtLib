@@ -1,7 +1,7 @@
 #pragma once
-
 #include <algorithm>
 #include "yogurtlib/pose.hpp"
+
 namespace yogurt{
 
 struct PathVec {

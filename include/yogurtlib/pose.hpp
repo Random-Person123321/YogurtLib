@@ -1,5 +1,4 @@
 #pragma once
-#include "yogurtlib/misc.hpp"
 
 namespace yogurt {
 
@@ -11,26 +10,20 @@ struct Pose {
     double theta = 0.0;
 
     Pose() = default;
-    Pose(double x, double y, double theta = 0.0) : x(x), y(y), theta(wrapDeg(theta)) {}
+    Pose(double x, double y, double theta = 0.0);
 
-    double distanceTo(const Pose& other) const {
-        return std::hypot(other.x - x, other.y - y);
-    }
+    double distanceTo(const Pose& other) const;
 
     // Absolute heading (deg) of the straight line from this pose to other.
-    double angleTo(const Pose& other) const {
-        return rad2deg(std::atan2(other.y - y, other.x - x));
-    }
+    double angleTo(const Pose& other) const;
 
     // Signed shortest turn (deg) needed to point this pose's heading at other.
-    double headingErrorTo(const Pose& other) const {
-        return angleDiffDeg(angleTo(other), theta);
-    }
+    double headingErrorTo(const Pose& other) const;
 
-    Pose operator+(const Pose& o) const { return Pose(x + o.x, y + o.y, theta + o.theta); }
-    Pose operator-(const Pose& o) const { return Pose(x - o.x, y - o.y, theta - o.theta); }
-    bool operator==(const Pose& o) const { return x == o.x && y == o.y && theta == o.theta; }
-    bool operator!=(const Pose& o) const { return !(*this == o); }
+    Pose operator+(const Pose& o) const;
+    Pose operator-(const Pose& o) const;
+    bool operator==(const Pose& o) const;
+    bool operator!=(const Pose& o) const;
 };
 
 } // namespace yogurt

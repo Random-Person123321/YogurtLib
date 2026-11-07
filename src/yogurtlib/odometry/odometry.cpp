@@ -1,4 +1,5 @@
 #include "yogurtlib/dt/dt.hpp"
+#include "yogurtlib/misc.hpp"
 using namespace yogurt;
 
 double Drivetrain::readHeadingDeg() const {
@@ -59,83 +60,6 @@ void Drivetrain::updateOdometry(double /*dt*/) {
     lastHeadingDeg = headDeg;
 }
 
-// double IMU::fuseIMUs(double time) {
-//     double maxDegMs = maxTurnDelta / 1000.0 * time;
-//     double median = 0.0;
-//     double sorted = 0.0;
-//     int goodImus = 0;
-//     std::vector<std::pair<double, int>> sortedImu;
-
-//     for(int i = 0; i < sensors.size(); i++){
-//         imuData[i].skip = false; //Reset so no IMU's are skipped
-//         imuData[i].badRead = false;
-//     }
-
-//     if (sensors.size() >= 2){
-//         for (int i = 0; i < sensors.size(); i++) {
-//             double raw = sensors[i]->get_rotation();
-//             double reading = raw * imuData[i].scale;
-//             imuData[i].badRead = Imubad(reading);
-//             if (imuData[i].badRead) {imuData[i].skip = true; imuData[i].rejects += 1; continue;}
-//             if (!imuData[i].badRead) {imuData[i].delta = (imuData[i].last - raw) * imuData[i].scale; imuData[i].last = raw; }
-//             //Skip logic based on max speed (D/s the IMU can read befor being rejected)
-//             if(abs(imuData[i].delta) >= maxDegMs) {imuData[i].rejects += 1; imuData[i].skip = true; }
-//             if (imuData[i].skip || imuData[i].dead || imuData[i].benched) continue;
-//             sortedImu.push_back({imuData[i].delta, i});
-//         }
-//         std::sort(sortedImu.begin(), sortedImu.end());
-//         int asize = sortedImu.size();
-//         if (asize == 0) return lastFused = 0.0;
-//         if (asize % 2 == 1) median = sortedImu[asize / 2].first;
-//         else median = (sortedImu[asize / 2 - 1].first + sortedImu[asize / 2].first) / 2.0;
-//         double tolerance = inertialRejectTolerance + (inertialTurnLeniency * fabs(median));
-//         for (int k = 0; k < asize; k++) {
-//             double d = sortedImu[k].first;    // the delta
-//             int idx  = sortedImu[k].second;   // which IMU it came from
-//             if (std::fabs(median - d) < tolerance) {
-//                 sorted += d;
-//                 goodImus += 1;
-//             } else {
-//                 imuData[idx].rejects += 1;
-//             }
-//         }
-//         lastFused = (goodImus > 0) ? sorted / goodImus : median;
-
-//         if (asize >= 3){
-//             //Go into benching logic
-//             for(int i = 0; i < sensors.size(); i++){
-//                 if(imuData[i].dead || imuData[i].skip) continue;
-//                 if(imuData[i].benched){
-//                     imuData[i].drift = (imuData[i].drift + (imuData[i].delta - lastFused)) * benchedImuDecay;
-//                     if (imuData[i].drift < inertialRejectTolerance) {imuData[i].goodstreak += 1;}
-//                     else {imuData[i].goodstreak = 0;}
-//                     if (imuData[i].goodstreak >= benchedImuGoodRuns) {imuData[i].goodstreak = 0; imuData[i].benched = false; imuData[i].badstreak = 0;}
-//                 } 
-//                 else if (!imuData[i].benched){
-//                     imuData[i].drift = (imuData[i].drift + (imuData[i].delta - lastFused)) * benchedImuDecay;
-//                     if(imuData[i].drift >= inertialRejectTolerance) {imuData[i].badstreak += 1;}
-//                     else {if(imuData[i].badstreak > 0) {imuData[i].badstreak -=1; } else {imuData[i].goodstreak += 1; }}
-//                     if (imuData[i].badstreak >= benchedImuBadRuns) {imuData[i].benched = true; imuData[i].goodstreak = 0; imuData[i].badstreak = 0;}
-//                 }
-//             }
-//         }
-
-//         return lastFused; //Return the fused and filtered imu data
-//     }
-//     else if (sensors.size() == 1){
-//         double raw = sensors[0]->get_rotation();
-//         if (Imubad(raw)){
-//             return 0; //Return 0 if the IMU reads inf or nan - assuming no heading change
-//         } else {
-//             double delta = imuData[0].last - raw;
-//             imuData[0].last = raw;
-//             lastFused = delta;
-//             return lastFused; //Return the difference in rotation - DEGREES
-//         }
-//     } else {
-//         return 0; //If 0 imu's or other errors
-//     }
-// }
 
 void Drivetrain::distanceReset(DistanceSensors& distance, double knownFeaturePos, int resets, double angleOffset) { //The angle offset the sensor is mounted at (Pointint up = (+) vice verca)
     double offset = distance.isXaxis ? distance.xOffset : distance.yOffset;
@@ -177,6 +101,69 @@ void Drivetrain::distanceReset(DistanceSensors& distance, double knownFeaturePos
   poseMutex.give();
 }
 
+void IMU::setScale(int i, int scale) {
+    if (i < 0 || i >= imuData.size() || scale <= 0.0) return;
+    imuData[i].scale = scale;
+}
+
+int IMU::acceptedIMUs() const {
+    int cnt = 0;
+    for (auto &d : imuData) if (d.valid && !d.benched) cnt++;
+    return cnt;
+}
+
+bool IMU::isBenched(int i) const {
+    if (i < 0 || i >= imuData.size()) return false;
+    return imuData[i].benched;
+}
+
+double IMU::fuseIMUs(double timeMs, bool still) {
+    if (sensors.empty()) return lastFused = 0.0;
+    
+    readSensors(timeMs);
+    if (!fillVals()) return lastFused = 0.0;
+
+    double median = IMU::median();
+    double tol = rejectionTolerance(median);
+    lastFused = averageAccepted(median, tol);
+    if (sensors.size() >= 3) updateHealth(median, tol, timeMs);
+    if (still) learnBias();
+    
+    return lastFused;
+}
+
+bool IMU::calibrate(int timeoutMs) {
+    for(auto &s : sensors) s->reset(false);
+    pros::delay(50);
+    for (int t = 50; t < timeoutMs; t += 10) pros::delay(10);
+
+    bool allReady = true;
+    for (int i = 0; i < sensors.size(); i++) {
+        double scale = imuData[i].scale;
+        imuData[i] = ImuDataVars{}; // Clears old values for new ones
+        imuData[i].scale = scale; //   Reinputs old scale
+        imuData[i].resync = true; // Figure out how to do
+        if (sensors[i]->is_calibrating()) allReady = false;
+        sensors[i]->set_data_rate(5);
+    }
+    return allReady;
+}
+
+void IMU::rebase() {
+    for (int i = 0; i < sensors.size(); i++) {
+        double raw = sensors[i]->get_rotation();
+        if (!Imubad(raw)) imuData[i].last = raw;
+        else imuData[i].resync = true;
+    }
+}
+
+bool IMU::anyCalibrating() {
+    for (auto&s : sensors) {
+        if (s->is_calibrating()) return true;
+    }
+    return false;
+}
+
 bool IMU::Imubad (double value) {
     return std::isnan(value) || std::isinf(value);
 }
@@ -198,6 +185,7 @@ bool IMU::checkIMU(int i, double maxStep) {
     double raw = sensors[i]->get_rotation();
     if (Imubad(raw)) { d.rejects++; d.resync = true; return false; }
     if (d.resync) { d.last = raw; d.resync = false; return false; }
+    // Using last - current to convert compass heading into unit circle convention(CCW positive deg)
     d.delta = (d.last - raw) * d.scale - d.bias;
     d.last = raw;
     if (std::fabs(d.delta) > maxStep) { d.rejects++; return false; };
@@ -223,4 +211,59 @@ double IMU::median() {
 
 double IMU::rejectionTolerance(double median) const {
     return inertialRejectTolerance + inertialTurnLeniency * std::fabs(median);
+}
+
+bool IMU::acceptIMU(const ImuDataVars& d, double median, double tol) const {
+    return std::fabs(d.delta - median) <= tol;
+}
+
+double IMU::averageAccepted(double median, double tol) const {
+    double sum = 0.0; int cnt = 0;
+    for (auto &d : imuData) {
+        if (d.valid && !d.benched && acceptIMU(d, median, tol)) {
+            sum += d.delta; cnt++;
+        }
+    }
+    return cnt ? sum / cnt : median;
+}
+
+// Health
+void IMU::updateHealth(double median, double tol, double timeMs) {
+    const int dt = timeMs / 1000.0;
+    const double decay = 1.0 - dt / driftWindow;
+    const double driftLimit = maxDriftRate * driftWindow;
+    for (auto &d : imuData) {
+        if (!d.valid) continue;
+        // Decays the drift overtime and add the new drift from the known blended value
+        d.drift = d.drift * decay + lastFused - d.delta;
+        bool good = acceptIMU(d, median, tol) && std::fabs(d.drift) <= driftLimit;
+        if (good) markGood(d);
+        else markBad(d);
+    }
+}
+
+void IMU::markGood(ImuDataVars& d) {
+    if (d.badstreak > 0) d.badstreak--;
+    if (d.benched && ++d.badstreak >= benchedImuGoodRuns) {
+        d.benched = false;
+        d.goodstreak = 0;
+    }
+}
+
+void IMU::markBad(ImuDataVars& d) {
+    d.goodstreak = 0;
+    d.rejects ++;
+    if(!d.benched && ++d.badstreak >= benchedImuBadRuns){
+        d.benched = true;
+        d.badstreak = 0;
+    }
+}
+
+// Bias
+void IMU::learnBias() {
+    for (auto &d: imuData) {
+        // If the IMU is good and the delta is small enough(meaning we are still)
+        // Update the bias overtime according to a learn speed percentage
+        if (d.valid && std::fabs(d.delta) < stillMaxDelta) d.bias += biasLearnRate * d.delta;
+    }
 }

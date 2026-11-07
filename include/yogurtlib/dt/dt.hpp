@@ -1,13 +1,11 @@
 #pragma once
 #include "main.h"
 #include <atomic>
-#include <functional>
 #include "yogurtlib/control.hpp"
 #include "yogurtlib/odometry.hpp"
 #include "yogurtlib/pose.hpp"
 #include "yogurtlib/dt/motors.hpp"
 #include "yogurtlib/pursuit.hpp"
-#include "yogurtlib/misc.hpp"
 
 namespace yogurt {
 
@@ -262,8 +260,14 @@ public:
     double swingKsThreshold = 1.5;
 
     double boomerangCloseMinVolt = 5670.0;
-    double driveToMinVolt = 3000.0; //210E NEEDS TO TUNE THIS!
-    std::pair<double, double> driveToEarlyExit = {7.0, 4.0}; //TUNE THIS ALSO!!!
+    double driveToMinVolt = 3000.0; // This is the default minimum speed for chaining in between the turn and drive functions in driveTo
+    std::pair<double, double> driveToEarlyExit = {7.0, 4.0}; // This is the default chaining values for: turn, drive in the driveTo functions
+
+    // Stillness detection - the criterias for the code to assume the robot to be still when learning the bias of each IMU
+    // Inches per cycle(10ms) a trackingwheel may move to be considered stil, 
+    // along this, we also use the motor's commanded speed and the actual reading deltas of the IMUs
+    double stillWheelTol = 0.01;
+    int stillTime = 100; // ms, all checks must hold for this long to be considered still
 
     // Only the pieces with no sane default are constructor arguments: the
     // physical hardware, and the three gain sets a Drivetrain can't do its
@@ -342,7 +346,7 @@ public:
     /**
      * @brief returns the current pose
     */
-    Pose getPose();
+    Pose getPose() const;
     
     /**
      * @brief set the pose of the robot, call at the start of each autonomus routine
@@ -704,7 +708,7 @@ private:
     
     //----- Async Set Up and Functions -----
     pros::RecursiveMutex asyncMutex;
-    pros::Mutex poseMutex;     
+    mutable pros::Mutex poseMutex;     
     std::atomic<bool>   motionRunning{false};
     std::atomic<double> progress{0.0};
     bool progressPaused = false;

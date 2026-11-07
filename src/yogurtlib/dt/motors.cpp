@@ -14,7 +14,8 @@ void DriveMotors::setVoltage(double leftMv, double rightMv) const {
     lastR = rightMv;
 }
 
-void DriveMotors::arcade(double power, double turn, double expo, double bias) const {
+void DriveMotors::arcade(double power, double turn, bool useExpo, double expo, double bias) const {
+    if(!useExpo) expo = 1.0; // If users elect not to use expo drive we set it to linear
     // Get the abs and clamp between good values
     expo = std::fabs(expo);
     bias = std::fabs(bias);
@@ -46,7 +47,8 @@ void DriveMotors::arcade(double power, double turn, double expo, double bias) co
     right->move(static_cast<std::int32_t>(std::lround(std::clamp(rightp, -127.0, 127.0))));
 }
 
-void DriveMotors::tank(double leftPower, double rightPower, double expo) const {
+void DriveMotors::tank(double leftPower, double rightPower, bool useExpo, double expo) const {
+    if(!useExpo) expo = 1.0; // If users elect not to use expo drive we set it to linear
     expo = std::fabs(expo);
     expo = std::clamp(expo, 0.1, 146.0);
 
@@ -80,6 +82,6 @@ double DriveMotors::getWheelDiameter() const { return wheelDiameter; }
 double DriveMotors::expoCurve(double value, double n) const {
     if (value == 0.0) return 0.0; // If the value is zero return a zero
     double numi = value * std::pow(std::fabs(value), n - 1.0);
-    double denom = std::pow(127.0, n - 1);
+    double denom = std::pow(127.0, n - 1.0);
     return numi / denom;
 }

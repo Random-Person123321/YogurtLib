@@ -1,5 +1,6 @@
 #include "yogurtlib/dt/dt.hpp"
 #include "yogurtlib/pursuit.hpp"
+#include "yogurtlib/misc.hpp"
 using namespace yogurt;
 
 MotionResult Drivetrain::curve(Path path, int timeoutMs, CurveParams params, bool async) {

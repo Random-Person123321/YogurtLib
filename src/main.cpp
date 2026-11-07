@@ -5,11 +5,11 @@
 
 yogurt::UI uiobject;
 
-void classInit() {
-    // drivetrain.onCalibrated.push_back([](yogurt::Drivetrain& dt) {uiobject.screen_init(dt); });
-    // drivetrain.calibrate();
+// void classInit() {
+//     drivetrain.onCalibrated.push_back([](yogurt::Drivetrain& dt) {uiobject.screen_init(dt); });
+//     drivetrain.calibrate();
     
-}
+// }
 
 /**
  * Runs initialization code. This occurs as soon as the program is started.

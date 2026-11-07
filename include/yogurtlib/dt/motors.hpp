@@ -38,6 +38,7 @@ public:
      * 
      * @param power the forwards and backwards power
      * @param turn the turning power
+     * @param useExpo whether to use exponential scaling for the drive control, true = on
      * @param expo the controller for exponential driving, 1.0 = linear driving, closer to 0 will make the robot accelerate to higher speeds with less stick diflection, while values above 1.0 will make deflection near the center softer
      * @param bias how much turning or driving should take priority if they excceed full speed, ranges between 0 - 1 where 0 is all driving, 1 is all turning
      * 
@@ -53,13 +54,14 @@ public:
      * }
      * ```
      */
-    void arcade(double power, double turn, double expo = 1, double bias = 0.5) const;
+    void arcade(double power, double turn, bool useExpo = false, double expo = 2.0, double bias = 0.5) const;
 
     /**
      * @brief Tank style driver controls built into yogurtlib, for use in the driver control period of a match 
      * 
      * @param leftPower the power that should be given to the left motors
      * @param rightPower the power that should be given to the right motors
+     * @param useExpo whether to use exponential scaling for the drive control
      * @param expo the controller for exponential driving, 1.0 = linear driving, closer to 0 will make the robot accelerate to higher speeds with less stick diflection, while values above 1.0 will make deflection near the center softer
      *   
      * ### Example code:
@@ -74,7 +76,7 @@ public:
      * }
      * ```
      */
-    void tank(double leftPower, double rightPower, double expo = 1) const;
+    void tank(double leftPower, double rightPower, bool useExpo = false, double expo = 2.0) const;
 
     /**
      * @brief Sets the brakemode of the motors, choose between:

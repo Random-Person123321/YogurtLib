@@ -3,7 +3,6 @@
 #include "liblvgl/lvgl.h"
 #include "liblvgl/lv_api_map_v8.h"
 #include "yogurtlib/dt/dt.hpp"
-#include "yogurtlib/pose.hpp"
 
 namespace yogurt {class Drivetrain;} // Declaration, definition in dt.hpp
 

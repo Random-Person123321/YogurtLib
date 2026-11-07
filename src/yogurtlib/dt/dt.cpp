@@ -1,4 +1,5 @@
 #include "yogurtlib/dt/dt.hpp"
+#include "yogurtlib/misc.hpp"
 using namespace yogurt;
 
 OdomSensors::OdomSensors(pros::Rotation* vertical, double verticalDiameter, double verticalOffset,
@@ -33,12 +34,7 @@ void Drivetrain::setBoomerangSettleGains(Settle drive, Settle turn) {
 
 // Blocking IMU reset + starts the odometry task. Call once from initialize().
 void Drivetrain::calibrate(Pose startPose) {
-    for (auto* imu : odom.imus.sensors) {
-        imu->reset(false);
-        pros::delay(10);
-        imu->set_data_rate(5);
-    }
-    pros::delay(2000);
+    if (!odom.imus.calibrate()) std::cout << "IMU failed Initialize\n";
     setPose(startPose);
     if (!odomTaskStarted) {
         odomTaskStarted = true;
@@ -54,10 +50,11 @@ double Drivetrain::getTrackWidth() const { return trackWidth; }
 
 void Drivetrain::stop() { motors.stop(toBrakeMode(motors.left->get_brake_mode())); }
 
-Pose Drivetrain::getPose() {
+Pose Drivetrain::getPose() const {
     poseMutex.take();
     Pose p = pose;
     poseMutex.give();
+    p.theta = wrapDeg(p.theta);
     return p;
 }
 
@@ -69,10 +66,6 @@ void Drivetrain::setPose(const yogurt::Pose& p) {
     
     pose.theta = currentH + angleDiffDeg(pose.theta, currentH);
     odom.imus.rebase();
-    
-    double compassHeading = wrapDeg(90.0 - pose.theta);
-    if (compassHeading < 0) compassHeading += 360.0;
-    for (auto* imu : odom.imus.sensors) imu->set_heading(compassHeading);
 
     if (odom.vertical) lastVertTicks = odom.vertical->get_position();
     if (odom.horizontal) lastHorizTicks = odom.horizontal->get_position();
