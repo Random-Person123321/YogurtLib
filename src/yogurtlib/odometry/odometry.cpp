@@ -24,10 +24,12 @@ void Drivetrain::odomLoop() {
     while (true) {
         updateOdometry(stepMs / 1000.0);
         if (++logCount % 10 == 0) {
-        printf("%u,%.2f,%d", pros::millis(), pose.theta, lastStill);
+        printf("Still:%d",lastStill);
         for (int i = 0; i < odom.imus.count(); i++) {
-            printf(",%d,%d,%.3f", odom.imus.isValid(i), odom.imus.isBenched(i), odom.imus.drift(i));
-            printf(",%.2lf", odom.imus.getHeading(i));
+            printf(",Heading: %.1f", odom.imus.getHeading(i));
+            printf(",Drift: %.3f", odom.imus.drift(i));
+            printf(",Rejects: %d", odom.imus.imuData[i].rejects);
+
         }
         printf("\n");
 }
@@ -50,6 +52,7 @@ void Drivetrain::updateOdometry(double dt) {
     double dH = (hNow - lastHorizTicks) * H_IN_PER_TICK;
 
     bool still = isStill(dV, dH, dt);
+    lastStill = still;
     double dThetaDeg = odom.imus.fuseIMUs(dt * 1000.0, still);
     double dTheta = deg2rad(dTheta);
 

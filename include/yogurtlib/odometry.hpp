@@ -27,8 +27,8 @@ public:
 
    //IMU fusion VARIABLES:
     double inertialRejectTolerance = 0.3; //Degrees IMU's are allowed to differ from the median before being excluded from averaging
-    double inertialTurnLeniency = 0.10; //Percent that tolerance scales based on fast turns
-    double maxTurnDelta = 720.0; //Maximum speed a IMU can measure, if an IMU reads above this it is ignored, in deg/s
+    double inertialTurnLeniency = 0.5; //Percent that tolerance scales based on fast turns
+    double maxTurnDelta = 2000.0; //Maximum speed a IMU can measure, if an IMU reads above this it is ignored, in deg/s
 
     double maxDriftRate = 0.25; // deg/s, if the IMU drifts faster than this than it is no longer considered for heading
     double driftWindow = 2.0; // seconds, this is for how long during the run the drift check considers the IMU for
