@@ -14,9 +14,10 @@ MotionResult Drivetrain::turnToPoint(double x, double y, int timeoutMs, TurnToPo
     if (params.maxVolt < 0.0) params.maxVolt = maxVoltage;
     if (params.slewRate < 0.0) params.slewRate = defaultSlew;
     
-    double targetHeading = pose.angleTo(Pose(x, y));
+    Pose p = getPose();
+    double targetHeading = p.angleTo(Pose(x, y));
     if (params.reversed) targetHeading = wrapDeg(targetHeading + 180.0);
-    MotionResult result = turnToHeading(targetHeading, timeoutMs, {.maxVolt = params.maxVolt, .minVolt = params.minVolt, .earlyExitRange = params.earlyExitRange, .slewRate = params.slewRate}, false);
+    MotionResult result = turnToHeading(targetHeading, timeoutMs, {.maxVolt = params.maxVolt, .minVolt = params.minVolt, .earlyExitRange = params.earlyExitRange, .slewRate = params.slewRate, .dir = params.dir}, false);
     endMotion();
     return result;
 }

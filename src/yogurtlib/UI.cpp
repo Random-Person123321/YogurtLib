@@ -264,13 +264,14 @@ void UI::sync_Auton_Selector() {
 void UI::update_data(lv_timer_t* t) {
     if (do_data_updates) {
         char buf[20];
-        snprintf(buf, sizeof(buf), "X: %.2f", drivetrainRef->getPose().x);
+        Pose p = drivetrainRef->getPose();
+        snprintf(buf, sizeof(buf), "X: %.2f", p.x);
         lv_label_set_text(pose_x_lbl, buf);
         
-        snprintf(buf, sizeof(buf), "Y: %.2f", drivetrainRef->getPose().y);
+        snprintf(buf, sizeof(buf), "Y: %.2f", p.y);
         lv_label_set_text(pose_y_lbl, buf);
         
-        snprintf(buf, sizeof(buf), "H: %.2f", wrapDeg(drivetrainRef->getPose().theta));
+        snprintf(buf, sizeof(buf), "H: %.2f", wrapDeg(p.theta));
         lv_label_set_text(heading_lbl, buf);
         
         if (imuNum >= 1) {

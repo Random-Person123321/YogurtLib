@@ -87,7 +87,7 @@ void competition_initialize() {}
  */
 void autonomous() {
     // drivetrain.driveStraight(12.0, 1000);
-    drivetrain.turnToHeading(270.0, 1000, {.dir = yogurt::TurnDirection::COUNTERCLOCKWISE});
+    drivetrain.turnToHeading(300.0, 1000, {.dir = yogurt::TurnDirection::CLOCKWISE});
 }
 
 /**

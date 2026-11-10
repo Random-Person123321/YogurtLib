@@ -15,14 +15,15 @@ void Drivetrain::tuneOffset() {
         double H_IN_PER_TICK = (odom.horizontalDiameter * M_PI) / 36000.0;
         double V_IN_PER_TICK = (odom.verticalDiameter * M_PI) / 36000.0;
         double radAngle = deg2rad(angle);
-
-        double lastHReading = odom.horizontal->get_position(), lastVReading = odom.vertical->get_position(), lastTheta = pose.theta;
+        Pose p = getPose();
+        double lastHReading = odom.horizontal->get_position(), lastVReading = odom.vertical->get_position(), lastTheta = p.theta;
         motors.left->move_voltage(lSpeed);
         motors.right->move_voltage(rSpeed);
         pros::delay(200);
         
         while (fabs(Stheta) < radAngle) {
-            double currentHReading = odom.horizontal->get_position(), currentVReading = odom.vertical->get_position(), currentTheta = pose.theta;
+            p = getPose();
+            double currentHReading = odom.horizontal->get_position(), currentVReading = odom.vertical->get_position(), currentTheta = p.theta;
             double thetaDeg = angleDiffDeg(currentTheta, lastTheta);
 
             SdV += (currentVReading - lastVReading) * V_IN_PER_TICK;

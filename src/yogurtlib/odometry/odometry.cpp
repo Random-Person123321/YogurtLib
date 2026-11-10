@@ -102,15 +102,16 @@ void Drivetrain::distanceReset(DistanceSensors& distance, double knownFeaturePos
     double corrected = knownFeaturePos + sign * (reading + offset);
 
     constexpr double alpha = 0.6; //0.35
+    poseMutex.take();
     if (distance.isXaxis) pose.x += (corrected - pose.x) * alpha;
     else pose.y += (corrected - pose.y) * alpha;
+    poseMutex.give();
   };
-  poseMutex.take();
+
   for (int i = 1; i <= resets; i++) {
     reset();
     pros::delay(50);
   }
-  poseMutex.give();
 }
 
 std::vector<double> Drivetrain::measureImuScale(bool CW, int turns, int volts, int resetSecs, int timeOut) {
@@ -119,11 +120,13 @@ std::vector<double> Drivetrain::measureImuScale(bool CW, int turns, int volts, i
     std::vector<double> start(imus.sensors.size());
     for (size_t i = 0; i < start.size(); i++) start[i] = imus.sensors[i]->get_rotation();
 
-    double startHeading = pose.theta;
+    Pose p = getPose();
+    double startHeading = p.theta;
     motors.setVoltage(-dir * volts, dir * volts);
     int elapsed = 0;
 
-    while (std::fabs(pose.theta - startHeading) < turns * 360.0 - 10.0 && elapsed < timeOut) {
+    while (std::fabs(p.theta - startHeading) < turns * 360.0 - 10.0 && elapsed < timeOut) {
+        p = getPose();
         pros::delay(10);
         elapsed += 10;
     }

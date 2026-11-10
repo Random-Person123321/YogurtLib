@@ -11,19 +11,21 @@ MotionResult Drivetrain::driveToPoint(double x, double y, int turnTimeout, int d
         pros::delay(10);
         return MotionResult::Running;
     }
+
+    Pose p = getPose();
     
     if (params.maxVolt < 0.0) params.maxVolt = maxVoltage;
     if (params.slewRate < 0.0) params.slewRate = defaultSlew;
 
     if (params.usePurePursuit) {
-        std::vector<PathVec> points = {{pose.x, pose.y}, {x, y}};
+        std::vector<PathVec> points = {{p.x, p.y}, {x, y}};
         Path path(points, pathSettings);
         MotionResult result = curve(path, turnTimeout + driveTimeout, {.reversed = params.reversed, .minSpeed = (params.minVolt / 12000.0 * 127.0), .earlyExitRange = params.earlyExitRange,  .slewRate = params.slewRate} );
         endMotion();
         return result;
     }
 
-    double targetHeading = pose.angleTo(Pose(x, y));
+    double targetHeading = p.angleTo(Pose(x, y));
     int sign = 1;
     if (params.reversed) {
         targetHeading = wrapDeg(targetHeading + 180.0);
@@ -34,13 +36,14 @@ MotionResult Drivetrain::driveToPoint(double x, double y, int turnTimeout, int d
         return (r == MotionResult::Chained) || (r == MotionResult::Settled);
     };
     progressPaused = true;
-    auto turnR = turnToHeading(targetHeading, turnTimeout, {.maxVolt = params.maxVolt, .minVolt = driveToMinVolt, .earlyExitRange = driveToEarlyExit.first, .slewRate = params.slewRate}, false);
+    auto turnR = turnToHeading(targetHeading, turnTimeout, {.maxVolt = params.maxVolt, .minVolt = driveToMinVolt, .earlyExitRange = driveToEarlyExit.first, .slewRate = params.slewRate, .dir = params.dir}, false);
     
     if (turnR == MotionResult::Cancelled) { endMotion(); return turnR; }
 
+    p = getPose();
     progressPaused = false;
-    double dist = pose.distanceTo(Pose(x, y));
-    double off = angleDiffDeg(targetHeading, pose.theta);
+    double dist = p.distanceTo(Pose(x, y));
+    double off = angleDiffDeg(targetHeading, p.theta);
     auto driveR = driveStraight(sign * dist, driveTimeout, {.maxVolt = params.maxVolt, .minVolt = params.minVolt, .headingOffset = off, .earlyExitRange = params.earlyExitRange, .slewRate = params.slewRate}, false);
 
     endMotion();

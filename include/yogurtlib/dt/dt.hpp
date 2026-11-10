@@ -170,6 +170,7 @@ struct DriveToPointParams {
     bool reversed = false;
     double earlyExitRange = 0.0;
     double slewRate = -1.0;
+    TurnDirection dir = TurnDirection::AUTO;
 };
 
 struct DriveToPoseParams {

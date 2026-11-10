@@ -12,9 +12,11 @@ MotionResult Drivetrain::curve(Path path, int timeoutMs, CurveParams params, boo
         pros::delay(10);
         return MotionResult::Running;
     }
+
+    Pose p = getPose();
     
     path.setTrackwidth(trackWidth);
-    path.setStart(pose.x, pose.y);
+    path.setStart(p.x, p.y);
 
     if (!path.valid()) {
         endMotion();
@@ -49,10 +51,10 @@ MotionResult Drivetrain::curve(Path path, int timeoutMs, CurveParams params, boo
             result = MotionResult::Cancelled;
             break;
         }
-        Pose pose = getPose();
+        p = getPose();
         double progressS = pp.getProgress();
         double maxStep = params.slewRate / 12000.0 * 127.0;
-        FollowReturn r = pp.step(pose, L, params.reversed, params.minSpeed, maxStep, pursuitSettings.endTolerance, dt);
+        FollowReturn r = pp.step(p, L, params.reversed, params.minSpeed, maxStep, pursuitSettings.endTolerance, dt);
         
         if (r.distToPath > pursuitSettings.lostDist) {
             result = MotionResult::Lost;
@@ -379,7 +381,7 @@ double PurePursuit::arcCurv(Pose& p, bool reversed, bool& behind, double& side) 
 // sRobot = A.s + along
 // · is the dot product: x*x' + y*y'. It measures how far the robot is along that direction. 
 
-double PurePursuit::targetSpeed(Pose& pose, double minSpeed, double maxStep) {
+double PurePursuit::targetSpeed(Pose& p, double minSpeed, double maxStep) {
     int A = closestIdx > 0 ? closestIdx - 1 : 0;
     int B = std::min((int)closestIdx + 1, path.size() - 1);
     double dx = path[B].x - path[A].x;
@@ -388,8 +390,8 @@ double PurePursuit::targetSpeed(Pose& pose, double minSpeed, double maxStep) {
     double ux = dx / len;
     double uy = dy / len;
     
-    double rx = pose.x - path[A].x;
-    double ry = pose.y - path[A].y;
+    double rx = p.x - path[A].x;
+    double ry = p.y - path[A].y;
     
 
     double along = ux * rx + uy * ry;
@@ -447,12 +449,12 @@ WheelTargets PurePursuit::wheelSpeeds(double target, double curv, bool reversed,
     return out;
 }
 
-bool PurePursuit::isDone(const Pose& pose, double endTolerance, double lookaheadDist) const {
+bool PurePursuit::isDone(const Pose& p, double endTolerance, double lookaheadDist) const {
     if (progressS <= std::max(path.length() - lookaheadDist, 0.0)) return false; //Check if we are even nearing done - should fix loopy paths
     int n = path.size();
     double dx = path[n - 1].x - path[n - 2].x, dy = path[n - 1].y - path[n - 2].y;
     double len = std::hypot(dx, dy), ux = dx / len, uy = dy / len;
-    double along = (pose.x - path[n - 1].x) * ux + (pose.y - path[n - 1].y) * uy;
+    double along = (p.x - path[n - 1].x) * ux + (p.y - path[n - 1].y) * uy;
     // Along would be negative if we are still before the end where as it would be positive after we passed it
     return along >= -endTolerance; //Return if we are past the end
 }

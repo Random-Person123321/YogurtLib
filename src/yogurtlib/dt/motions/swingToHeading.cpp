@@ -15,7 +15,8 @@ MotionResult Drivetrain::swingToHeading(double targetDeg, int timeoutMs,
     if (params.maxVolt < 0.0) params.maxVolt = maxVoltage;
     if (params.slewRate < 0.0) params.slewRate = defaultSlew;
 
-    double lastTheta = pose.theta;
+    Pose p = pose;
+    double lastTheta = p.theta;
 
     swingPID.reset();
     swingSettle.reset();
@@ -26,7 +27,7 @@ MotionResult Drivetrain::swingToHeading(double targetDeg, int timeoutMs,
 
     auto [prevL, prevR] = motors.getLastVolt();
     double minV = fabs(params.minVolt), maxV = fabs(params.maxVolt);
-    int dir = copysign(1, angleDiffDeg(targetDeg, pose.theta));
+    int dir = copysign(1, angleDiffDeg(targetDeg, p.theta));
     
     MotionResult result = MotionResult::Timeout;
     int time = 0;
@@ -40,11 +41,11 @@ MotionResult Drivetrain::swingToHeading(double targetDeg, int timeoutMs,
             result = MotionResult::Cancelled;
             break;
         }
-        
-        if (!progressPaused) progress = progress + std::fabs(angleDiffDeg(pose.theta, lastTheta));
-        lastTheta = pose.theta;
+        p = getPose();
+        if (!progressPaused) progress = progress + std::fabs(angleDiffDeg(p.theta, lastTheta));
+        lastTheta = p.theta;
 
-        double err = angleDiffDeg(targetDeg, pose.theta);
+        double err = angleDiffDeg(targetDeg, wrapDeg(p.theta));
 
         if (chainExit(err, dir, minV, params.earlyExitRange)) {
             result = MotionResult::Chained;
@@ -61,8 +62,8 @@ MotionResult Drivetrain::swingToHeading(double targetDeg, int timeoutMs,
         if (std::fabs(err) > swingKsThreshold) out += std::copysign(swingKs, err);
         out = std::clamp(out, -maxV, maxV);
         if (minV > 0.0 && fabs(out) < minV) out = copysign(minV, err);
-        double leftV = leftSidePivot ? limitOutput(-out, prevL, -maxV, maxV, params.slewRate) : 0.0 /* limitOutput(0.0, prevL, -maxV, maxV, params.slewRate) */;
-        double rightV = leftSidePivot ? 0.0 /* limitOutput(0.0, prevR, -maxV, maxV, params.slewRate) */ : limitOutput(out, prevR, -maxV, maxV, params.slewRate);
+        double leftV = leftSidePivot ? limitOutput(-out, prevL, -maxV, maxV, params.slewRate) : 0.0;
+        double rightV = leftSidePivot ? 0.0 : limitOutput(out, prevR, -maxV, maxV, params.slewRate);
     
         motors.setVoltage(leftV, rightV);
         if (leftSidePivot) motors.right->brake();
