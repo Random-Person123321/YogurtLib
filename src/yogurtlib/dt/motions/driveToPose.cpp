@@ -21,7 +21,7 @@ MotionResult Drivetrain::driveToPose(double x, double y, double headingDeg,
     if (pointR == MotionResult::Cancelled) { endMotion(); return pointR; }
 
     progressPaused = true;
-    auto turnR = turnToHeading(headingDeg, turnTimeout, {.maxVolt = params.maxVolt, .minVolt = params.minVolt, .earlyExitRange = params.earlyExitRange, .slewRate = params.slewRate}, false);
+    auto turnR = turnToHeading(headingDeg, turnTimeout, {.maxVolt = params.maxVolt, .minVolt = params.minVolt, .earlyExitRange = params.earlyExitRange, .slewRate = params.slewRate, .dir = params.dir}, false);
     
     endMotion();
     return !check(pointR)? pointR : (!check(turnR)? turnR : pointR);

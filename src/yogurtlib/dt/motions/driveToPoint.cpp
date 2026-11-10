@@ -43,8 +43,8 @@ MotionResult Drivetrain::driveToPoint(double x, double y, int turnTimeout, int d
     p = getPose();
     progressPaused = false;
     double dist = p.distanceTo(Pose(x, y));
-    double off = angleDiffDeg(targetHeading, p.theta);
-    auto driveR = driveStraight(sign * dist, driveTimeout, {.maxVolt = params.maxVolt, .minVolt = params.minVolt, .headingOffset = off, .earlyExitRange = params.earlyExitRange, .slewRate = params.slewRate}, false);
+    double offset = angleDiffDeg(targetHeading, p.theta);
+    auto driveR = driveStraight(sign * dist, driveTimeout, {.maxVolt = params.maxVolt, .minVolt = params.minVolt, .headingOffset = offset, .earlyExitRange = params.earlyExitRange, .slewRate = params.slewRate}, false);
 
     endMotion();
     return !check(driveR)? driveR : (!check(turnR)? turnR : driveR); //If does not pass error check, return error otherwise normal output

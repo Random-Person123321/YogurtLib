@@ -43,9 +43,8 @@ MotionResult Drivetrain::turnToHeading(double targetDeg, int timeoutMs, TurnToHe
         lastTheta = p.theta;
 
         double err = angleDiffDeg(targetDeg, wrapDeg(p.theta));
-        if (params.dir == TurnDirection::CLOCKWISE && err > 0) err -= 360.0;
-        else if (params.dir == TurnDirection::COUNTERCLOCKWISE && err < 0) err += 360.0;
-        
+        err = resolveTurnTarget(err, params.dir);
+
         if (chainExit(err, dir, minV, params.earlyExitRange)) {
             result = MotionResult::Chained;
             motionChain = true;

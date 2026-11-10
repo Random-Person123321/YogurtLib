@@ -46,7 +46,8 @@ MotionResult Drivetrain::swingToHeading(double targetDeg, int timeoutMs,
         lastTheta = p.theta;
 
         double err = angleDiffDeg(targetDeg, wrapDeg(p.theta));
-
+        err = resolveTurnTarget(err, params.dir);
+        
         if (chainExit(err, dir, minV, params.earlyExitRange)) {
             result = MotionResult::Chained;
             motionChain = true;

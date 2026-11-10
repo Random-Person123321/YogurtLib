@@ -180,6 +180,7 @@ struct DriveToPoseParams {
     bool reversed = false;
     double earlyExitRange = 0.0;
     double slewRate = -1.0;
+    TurnDirection dir = TurnDirection::AUTO;
 };
 
 struct CurveParams {
@@ -689,12 +690,13 @@ private:
 
     static double inchesPerTick(double wheelDiamIn);
 
-
     // Applies battery-voltage scaling, a slew-rate limit, and clamping — the
     // sequence every motor command in this class goes through before it's sent.
     double limitOutput(double v, double& prev, double minV, double maxV, double slewRate) const;
 
     bool chainExit (double error, int dir, double minV, double earlyExitRange);
+
+    double resolveTurnTarget(double err, TurnDirection dir);
 
     /**
      * @brief gets the actualSpeed of the drivetrain using motor encoder rpm's, helper function for purepursuit

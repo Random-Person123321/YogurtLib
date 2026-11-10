@@ -1,5 +1,6 @@
 #include "yogurtlib/dt/dt.hpp"
 #include "yogurtlib/dt/motors.hpp"
+#include "yogurtlib/misc.hpp"
 using namespace yogurt;
 
 double Drivetrain::limitOutput(double v, double& prev, double minV, double maxV, double slewRate) const {
@@ -33,4 +34,10 @@ BrakeMode yogurt::toBrakeMode(pros::MotorBrake mode) {
         case pros::MotorBrake::hold :  return BrakeMode::Hold;
         case pros::MotorBrake::brake : default: return BrakeMode::Brake;
     }
+}
+
+double Drivetrain::resolveTurnTarget(double err, TurnDirection dir) {
+    if (dir == TurnDirection::CLOCKWISE && err > 0) return err - 360.0;
+    if (dir == TurnDirection::COUNTERCLOCKWISE && err < 0) return err + 360.0;
+    return err;
 }
