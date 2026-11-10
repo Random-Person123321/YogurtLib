@@ -60,11 +60,11 @@ Pose Drivetrain::getPose() const {
 
 void Drivetrain::setPose(const yogurt::Pose& p) {
     poseMutex.take();
-    double currentH = p.theta;
+    double current = pose.theta;
     pose.x = p.x;
     pose.y = p.y;
     
-    pose.theta = currentH + angleDiffDeg(pose.theta, currentH);
+    pose.theta = current + angleDiffDeg(p.theta, current);
     odom.imus.rebase();
 
     if (odom.vertical) lastVertTicks = odom.vertical->get_position();
@@ -104,8 +104,8 @@ void Drivetrain::requestMotion() {
     }
 }
 
-void Drivetrain::endMotion(){
-    std::cout << "endMotion\n";
+void Drivetrain::endMotion() {
+    // std::cout << "endMotion\n";
     if(--motionDepth == 0) motionRunning = false;
     asyncMutex.give();
 }

@@ -43,6 +43,9 @@ void classInit() {
     drivetrain.setHeadingCorrectionGains(430.0, 0.0, 26.875, 2.0);
     drivetrain.setBoomerangSettleGains({}, {});
     drivetrain.onCalibrated.push_back([](yogurt::Drivetrain& dt) {uiobject.screen_init(dt); });
+    drivetrain.odom.imus.setScale(0, 0.9995965);
+    drivetrain.odom.imus.setScale(1, 1.004945);
+    drivetrain.odom.imus.setScale(2, 1.00181);
     drivetrain.calibrate();
 }
 /**
@@ -82,7 +85,10 @@ void competition_initialize() {}
  * will be stopped. Re-enabling the robot will restart the task, not re-start it
  * from where it left off.
  */
-void autonomous() {}
+void autonomous() {
+    // drivetrain.driveStraight(12.0, 1000);
+    drivetrain.turnToHeading(270.0, 1000, {.dir = yogurt::TurnDirection::COUNTERCLOCKWISE});
+}
 
 /**
  * Runs the operator control code. This function will be started in its own task

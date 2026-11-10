@@ -31,7 +31,7 @@ void Drivetrain::odomLoop() {
             printf(",Rejects: %d", odom.imus.imuData[i].rejects);
 
         }
-        printf("\n");
+        printf("\n"); 
 }
         pros::Task::delay_until(&prevTime, stepMs);
     }
@@ -113,6 +113,37 @@ void Drivetrain::distanceReset(DistanceSensors& distance, double knownFeaturePos
   poseMutex.give();
 }
 
+std::vector<double> Drivetrain::measureImuScale(bool CW, int turns, int volts, int resetSecs, int timeOut) {
+    double dir = CW ? -1.0 : 1.0;
+    auto& imus= odom.imus;
+    std::vector<double> start(imus.sensors.size());
+    for (size_t i = 0; i < start.size(); i++) start[i] = imus.sensors[i]->get_rotation();
+
+    double startHeading = pose.theta;
+    motors.setVoltage(-dir * volts, dir * volts);
+    int elapsed = 0;
+
+    while (std::fabs(pose.theta - startHeading) < turns * 360.0 - 10.0 && elapsed < timeOut) {
+        pros::delay(10);
+        elapsed += 10;
+    }
+
+    motors.stop(BrakeMode::Coast);
+
+    printf("Square the robot... %d seconds \n", resetSecs);
+    pros::delay(resetSecs * 1000);
+    
+    std::vector<double> scales(start.size(), 1.0);
+    for(size_t i = 0; i < start.size(); i++) {
+        double measured = std::fabs(imus.sensors[i]->get_rotation() - start[i]);
+        if(std::isinf(measured) || measured < 180.0) continue;
+        double trueTurns = std::round(measured / 360.0) * 360.0;
+        scales[i] = trueTurns / measured;
+    }
+
+    return scales;
+}
+
 void IMU::setScale(int i, int scale) {
     if (i < 0 || i >= imuData.size() || scale <= 0.0) return;
     imuData[i].scale = scale;
@@ -141,7 +172,7 @@ double IMU::drift(int i) const {
 
 // Temporary for now
 double IMU::getHeading(int i) const {
-    if (i < 0 || i >= imuData.size()) return wrapDeg(lastFused);
+    if (i < 0 || i >= imuData.size()) return 0.0;
     return wrapDeg(imuData[i].last);
 }
 

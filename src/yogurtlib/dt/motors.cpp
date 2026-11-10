@@ -25,10 +25,10 @@ void DriveMotors::arcade(double power, double turn, bool useExpo, double expo, d
     power = expoCurve(std::clamp(power, -127.0, 127.0), expo);
     turn = expoCurve(std::clamp(turn, -127.0, 127.0), expo);
 
-    double leftp = power + turn;
-    double rightp = power - turn;
+    double leftPower = power + turn;
+    double rightPower = power - turn;
 
-    double maxV = std::max(std::fabs(leftp), std::fabs(rightp));
+    double maxV = std::max(std::fabs(leftPower), std::fabs(rightPower));
 
     if (maxV > 127.0) {
         double limitTurn = std::copysign(127.0 - std::fabs(power), turn);
@@ -39,12 +39,14 @@ void DriveMotors::arcade(double power, double turn, bool useExpo, double expo, d
         double lTurn = limitPower + turn;
         double rTurn = limitPower - turn;
 
-        leftp  = lDrive * (1.0 - bias) + lTurn * bias;
-        rightp = rDrive * (1.0 - bias) + rTurn * bias;
+        leftPower  = lDrive * (1.0 - bias) + lTurn * bias;
+        rightPower = rDrive * (1.0 - bias) + rTurn * bias;
     }
 
-    left->move(static_cast<std::int32_t>(std::lround(std::clamp(leftp, -127.0, 127.0))));
-    right->move(static_cast<std::int32_t>(std::lround(std::clamp(rightp, -127.0, 127.0))));
+    leftPower = leftPower * 12000.0 / 127.0;
+    rightPower = rightPower * 12000.0 / 127.0;
+
+    setVoltage(leftPower, rightPower);
 }
 
 void DriveMotors::tank(double leftPower, double rightPower, bool useExpo, double expo) const {
@@ -59,8 +61,10 @@ void DriveMotors::tank(double leftPower, double rightPower, bool useExpo, double
     leftPower = std::clamp(leftPower, -127.0, 127.0);
     rightPower = std::clamp(rightPower, -127.0, 127.0);
 
-    left->move(static_cast<std::int32_t>(std::lround(leftPower)));
-    right->move(static_cast<std::int32_t>(std::lround(rightPower)));
+    leftPower = leftPower * 12000.0 / 127.0;
+    rightPower = rightPower * 12000.0 / 127.0;
+
+    setVoltage(leftPower, rightPower);
 }
 
 void DriveMotors::setBrakeMode(BrakeMode mode) const {

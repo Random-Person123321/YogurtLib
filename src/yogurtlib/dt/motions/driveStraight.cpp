@@ -18,10 +18,11 @@ MotionResult Drivetrain::driveStraight(double distanceInches, int timeoutMs, Dri
     angularPID.reset();
     driveSettle.reset();
 
-    double startHeading = wrapDeg(pose.theta + params.headingOffset);
-    double targetX = pose.x + distanceInches * std::cos(deg2rad(startHeading));
-    double targetY = pose.y + distanceInches * std::sin(deg2rad(startHeading));
-    double lastX = pose.x, lastY = pose.y;
+    Pose p = getPose();
+    double startHeading = p.theta + params.headingOffset;
+    double targetX = p.x + distanceInches * std::cos(deg2rad(startHeading));
+    double targetY = p.y + distanceInches * std::sin(deg2rad(startHeading));
+    double lastX = p.x, lastY = p.y;
     
     auto [prevL, prevR] = motors.getLastVolt();
     double minV = fabs(params.minVolt), maxV = fabs(params.maxVolt);
@@ -40,17 +41,17 @@ MotionResult Drivetrain::driveStraight(double distanceInches, int timeoutMs, Dri
             result = MotionResult::Cancelled;
             break;
         }
+        p = getPose();
+        if (!progressPaused) progress = progress + std::hypot(p.x - lastX, p.y - lastY);
+        lastX = p.x;
+        lastY = p.y;
 
-        if (!progressPaused) progress = progress + std::hypot(pose.x - lastX, pose.y - lastY);
-        lastX = pose.x;
-        lastY = pose.y;
-
-        double dx = targetX - pose.x;
-        double dy = targetY - pose.y;
+        double dx = targetX - p.x;
+        double dy = targetY - p.y;
         double cosH = std::cos(deg2rad(startHeading));
         double sinH = std::sin(deg2rad(startHeading));
         double distErr = dx * cosH + dy * sinH;
-        double headErr = angleDiffDeg(startHeading, pose.theta);
+        double headErr = angleDiffDeg(startHeading, p.theta);
         
         if (chainExit(distErr, dir, minV, params.earlyExitRange)) {
             result = MotionResult::Chained;

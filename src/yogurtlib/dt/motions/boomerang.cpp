@@ -29,7 +29,8 @@ MotionResult Drivetrain::boomerang(double x, double y, double heading,
     
     bool close = false;
     int stillMs = 0;
-    double lastX = pose.x, lastY = pose.y, lastTheta = pose.theta;
+    Pose p = getPose();
+    double lastX = p.x, lastY = p.y, lastTheta = p.theta;
     
     MotionResult result = MotionResult::Timeout;
     int elapsed = 0;
@@ -44,7 +45,7 @@ MotionResult Drivetrain::boomerang(double x, double y, double heading,
             result = MotionResult::Cancelled;
             break;
         }
-        Pose p = pose;
+        p = getPose();
         double stepDist = std::hypot(p.x - lastX, p.y - lastY);
         double stepTurn = std::fabs(angleDiffDeg(p.theta, lastTheta));
         //Update progress:

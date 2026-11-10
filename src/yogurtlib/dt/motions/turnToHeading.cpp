@@ -14,14 +14,16 @@ MotionResult Drivetrain::turnToHeading(double targetDeg, int timeoutMs, TurnToHe
     if (params.maxVolt < 0.0) params.maxVolt = maxVoltage;
     if (params.slewRate < 0.0) params.slewRate = defaultSlew;
 
+    Pose p = getPose();
+
     turnPID.reset();
     turnSettle.reset();
-    double lastTheta = pose.theta;
+    double lastTheta = p.theta;
     MotionResult result = MotionResult::Timeout;
 
     auto [prevL, prevR] = motors.getLastVolt();
     double minV = fabs(params.minVolt), maxV = fabs(params.maxVolt);
-    int dir = copysign(1, angleDiffDeg(targetDeg, pose.theta));
+    int dir = copysign(1, angleDiffDeg(targetDeg, p.theta));
 
     int elapsed = 0;
     const int stepMs = 10;
@@ -35,10 +37,14 @@ MotionResult Drivetrain::turnToHeading(double targetDeg, int timeoutMs, TurnToHe
             result = MotionResult::Cancelled;
             break;
         }
-        if (!progressPaused) progress = progress + std::fabs(angleDiffDeg(pose.theta, lastTheta));
-        lastTheta = pose.theta;
 
-        double err = angleDiffDeg(targetDeg, pose.theta);
+        p = getPose();
+        if (!progressPaused) progress = progress + std::fabs(angleDiffDeg(p.theta, lastTheta));
+        lastTheta = p.theta;
+
+        double err = angleDiffDeg(targetDeg, wrapDeg(p.theta));
+        if (params.dir == TurnDirection::CLOCKWISE && err > 0) err -= 360.0;
+        else if (params.dir == TurnDirection::COUNTERCLOCKWISE && err < 0) err += 360.0;
         
         if (chainExit(err, dir, minV, params.earlyExitRange)) {
             result = MotionResult::Chained;

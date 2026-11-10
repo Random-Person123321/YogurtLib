@@ -660,6 +660,8 @@ public:
      */
     void tuneOffset();
 
+    std::vector<double> measureImuScale(bool CW, int turns, int volts, int resetSecs, int Timeout);
+
 private:
     // No gains by default (no correction) until setHeadingCorrectionGains() is called.
     PID angularPID{0.0, 0.0, 0.0, 0.0}; // Heading correction
