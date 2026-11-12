@@ -69,10 +69,10 @@ struct OdomSensors {
 
     IMU imus;
 
-    DistanceSensors left = {nullptr, 0.0, false, true};
-    DistanceSensors front = {nullptr, 0.0, true, false};
-    DistanceSensors right = {nullptr, 0.0, true, true};
-    DistanceSensors back = {nullptr, 0.0, false, false};
+    DistanceSensors left =  {nullptr, 0.0, 0.0, false, true};
+    DistanceSensors front = {nullptr, 0.0, 0.0, true, false};
+    DistanceSensors right = {nullptr, 0.0, 0.0, true, true};
+    DistanceSensors back =  {nullptr, 0.0, 0.0, false, false};
 
 
     OdomSensors(pros::Rotation* vertical, double verticalDiameter, double verticalOffset,

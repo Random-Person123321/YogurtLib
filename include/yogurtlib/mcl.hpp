@@ -1,21 +1,25 @@
 #pragma once
-#include "main.h"
 
-void update_Particle_Num();
+namespace yogurt {
 
-void generate_Particles();
 
-void predict_Movement();
+struct Segment {
+    double x1, x2;
+    double y1, y2;
+};
 
-void update_Sensors();
+struct ParticleData {
+    double x, y;
+    double weight;
+};
 
-void weigh_Particles();
+class MCL {
+    // The distance from the center of your field to any inner wall (should be ~70.2in)
+    void addWalls(double half);
 
-void calc_Pose();
+    // The center of the box, then it's width and height along the x and y-axis
+    void addBox(double cx, double cy, double width, double depth);
 
-void calc_Likelyhood();
+};
 
-// struct particle_data {
-// 	double x, y, h, weight;
-// };
-// std::vector<particle_data> particles;
+} // namespace yogurt

@@ -10,7 +10,7 @@ OdomSensors::OdomSensors(pros::Rotation* vertical, double verticalDiameter, doub
                          vertical(vertical), verticalDiameter(verticalDiameter), verticalOffset(verticalOffset),
                          horizontal(horizontal), horizontalDiameter(horizontalDiameter), horizontalOffset(horizontalOffset),
                          imus(imus) {left.sensor = leftD, left.xOffset = leftOffset, front.sensor = frontD, front.yOffset = frontOffset,
-                                    right.sensor = rightD, right.xOffset = rightOffset, back.sensor = leftD, back.yOffset = backOffset; }
+                                    right.sensor = rightD, right.xOffset = rightOffset, back.sensor = backD, back.yOffset = backOffset; }
 
 Drivetrain::Drivetrain(DriveMotors motors, OdomSensors odomSensors,
                        ControllerSettings driveSettings, ControllerSettings turnSettings, //Drive for driveStraight, turn for turnning

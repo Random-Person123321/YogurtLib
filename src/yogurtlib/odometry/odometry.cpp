@@ -54,7 +54,7 @@ void Drivetrain::updateOdometry(double dt) {
     bool still = isStill(dV, dH, dt);
     lastStill = still;
     double dThetaDeg = odom.imus.fuseIMUs(dt * 1000.0, still);
-    double dTheta = deg2rad(dTheta);
+    double dTheta = deg2rad(dThetaDeg);
 
     double forward = dV - (odom.verticalOffset * dTheta);
     double left = dH - (odom.horizontalOffset * dTheta);
@@ -201,7 +201,7 @@ double IMU::fuseIMUs(double timeMs, bool still) {
 bool IMU::calibrate(int timeoutMs) {
     for(auto &s : sensors) s->reset(false);
     pros::delay(50);
-    for (int t = 50; t < timeoutMs; t += 10) pros::delay(10);
+    for (int t = 50; t < timeoutMs && anyCalibrating(); t += 10) pros::delay(10);
 
     bool allReady = true;
     for (int i = 0; i < sensors.size(); i++) {
