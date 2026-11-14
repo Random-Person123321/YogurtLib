@@ -20,6 +20,12 @@ struct ImuDataVars {
     int goodstreak = 0, badstreak = 0;
 };
 
+struct Beam {
+    double xOffset, yOffset;
+    double dirX, dirY;
+};
+// MCL and Distance reset helper function
+Beam beamPos(double theta, double xOffset, double yOffset, double mountAngleDeg);
 
 class IMU {
     
@@ -53,6 +59,7 @@ public:
     double getHeading(int i) const;
 
     int count() const;
+
 private:
     friend class Drivetrain;
 

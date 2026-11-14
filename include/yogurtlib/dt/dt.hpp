@@ -15,10 +15,8 @@ struct DistanceSensors {
     pros::Distance* sensor = nullptr;
     double xOffset = 0.0; // The distance the sensor is offset in X, when the robot is facing north, positive is right
     double yOffset = 0.0; // The distance the sensor is offset in Y, when the robot is facing north, posotove is forwards
-    bool sensorDirPositive = true;
-    bool isXaxis = true;
+    double mountAngleDeg = 0.0; // The rotation the distance sensor is mounted at along the z-axis (Math heading, front of robot = 90deg & right = 0deg)
 };
-
 /**
     * @brief The owner of all odometry / tracking sensors, these are than passed into the drivetrain
     *
@@ -69,10 +67,11 @@ struct OdomSensors {
 
     IMU imus;
 
-    DistanceSensors left =  {nullptr, 0.0, 0.0, false, true};
-    DistanceSensors front = {nullptr, 0.0, 0.0, true, false};
-    DistanceSensors right = {nullptr, 0.0, 0.0, true, true};
-    DistanceSensors back =  {nullptr, 0.0, 0.0, false, false};
+    // Heading converted to use robot front = 0.0 deg, CCW positive for ease of adding on to pose.theta
+    DistanceSensors left =  {nullptr, 0.0, 0.0, 90.0};
+    DistanceSensors front = {nullptr, 0.0, 0.0, 0.0};
+    DistanceSensors right = {nullptr, 0.0, 0.0, -90.0};
+    DistanceSensors back =  {nullptr, 0.0, 0.0, 180.0};
 
 
     OdomSensors(pros::Rotation* vertical, double verticalDiameter, double verticalOffset,
@@ -379,7 +378,7 @@ public:
      * @param distance the sensor you intend to use for the reset
      * @param knownFeaturePos the known outer X/Y position of the feature, walls are measured to be 70.5 conistatly, THIS SHOULD BE WHAT THE SENSOR WILL MEASURE, NOT THE CENTER POSE OF THE GOAL/ETC
      * @param resets how many times to reset using the blend, 3 seems to work well, each reset takes approx 68ms
-     * @param angleOffset the angle the distance sensor is relative to the known feature
+     * @param angleOffset the angle the distance sensor is relative to the known feature (pointing up = (+) & vice verca)
      *
      * ### Example Code:
      *

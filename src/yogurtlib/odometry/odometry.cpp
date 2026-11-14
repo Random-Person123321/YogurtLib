@@ -73,45 +73,54 @@ void Drivetrain::updateOdometry(double dt) {
 }
 
 
-void Drivetrain::distanceReset(DistanceSensors& distance, double knownFeaturePos, int resets, double angleOffset) { //The angle offset the sensor is mounted at (Pointint up = (+) vice verca)
-    double offset = distance.isXaxis ? distance.xOffset : distance.yOffset;
+void Drivetrain::distanceReset(DistanceSensors& distance, double knownFeaturePos, int resets, double angleOffset) {
+    const double tiltRad = deg2rad(std::fabs(angleOffset)); 
     auto readInches = [&]() -> double {
-    int mm = distance.sensor->get();
-    if (mm == PROS_ERR) return NAN;
-    return mm / 25.4;
+        int mm = distance.sensor->get();
+        if (mm == PROS_ERR) return NAN;
+        return mm / 25.4;
     };
 
-  auto reset = [&]() {
-    angleOffset = std::abs(angleOffset);
-    angleOffset = deg2rad(angleOffset);
+    auto reset = [&]() {
 
-    double a = readInches(); pros::delay(34);
-    double b = readInches(); pros::delay(34);
-    double c = readInches();
+        double a = readInches(); pros::delay(34);
+        double b = readInches(); pros::delay(34);
+        double c = readInches();
 
-    if (!std::isfinite(a) || !std::isfinite(b) || !std::isfinite(c)) return;
+        if (!std::isfinite(a) || !std::isfinite(b) || !std::isfinite(c)) return;
 
-    double reading = (a + b + c) / 3.0;
-    if (reading < 1.5 || reading > 78.0) return;
-    // Adjust reading based on the angle offset the sensor is mounted at
-    reading = std::cos(angleOffset) * reading;
+        double reading = (a + b + c) / 3.0;
+        if (reading < 1.5 || reading > 78.0) return;
+        // Adjust reading based on the angle offset the sensor is mounted at
+        reading = std::cos(tiltRad) * reading;
 
-    if (std::fabs(a - b) > 2.0 || std::fabs(b - c) > 2.0 || std::fabs(a - c) > 2.0) return;
+        if (std::fabs(a - b) > 2.0 || std::fabs(b - c) > 2.0 || std::fabs(a - c) > 2.0) return;
 
-    double sign = distance.sensorDirPositive ? -1.0 : 1.0;
-    double corrected = knownFeaturePos + sign * (reading + offset);
+        Pose p = getPose();
+        Beam beam = beamPos(p.theta, distance.xOffset, distance.yOffset, distance.mountAngleDeg);
+        double offX = beam.xOffset;
+        double offY = beam.yOffset;
+        bool isXaxis = std::fabs(beam.dirX) > std::fabs(beam.dirY);
+        double along = isXaxis ? beam.dirX : beam.dirY;
+        // If the sensor is facing over 30 deg off from being perpendicular to the wall, return
+        if (std::fabs(along) < 0.866) return; 
+        double off = isXaxis? offX : offY;
+        double dist = reading * std::fabs(along);
 
-    constexpr double alpha = 0.6; //0.35
-    poseMutex.take();
-    if (distance.isXaxis) pose.x += (corrected - pose.x) * alpha;
-    else pose.y += (corrected - pose.y) * alpha;
-    poseMutex.give();
-  };
+        double sign = (along < 0.0) ? -1.0 : 1.0;
+        double corrected = knownFeaturePos - sign * dist - off;
 
-  for (int i = 1; i <= resets; i++) {
-    reset();
-    pros::delay(50);
-  }
+        constexpr double alpha = 0.6; //0.35
+        poseMutex.take();
+        if (isXaxis) pose.x += (corrected - pose.x) * alpha;
+        else pose.y += (corrected - pose.y) * alpha;
+        poseMutex.give();
+        
+    };
+    for (int i = 1; i <= resets; i++) {
+        reset();
+        pros::delay(50);
+    }
 }
 
 std::vector<double> Drivetrain::measureImuScale(bool CW, int turns, int volts, int resetSecs, int timeOut) {

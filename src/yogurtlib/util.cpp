@@ -1,6 +1,7 @@
 #include "yogurtlib/dt/dt.hpp"
 #include "yogurtlib/dt/motors.hpp"
 #include "yogurtlib/misc.hpp"
+#include "yogurtlib/odometry.hpp"
 using namespace yogurt;
 
 double Drivetrain::limitOutput(double v, double& prev, double minV, double maxV, double slewRate) const {
@@ -40,4 +41,15 @@ double Drivetrain::resolveTurnTarget(double err, TurnDirection dir) {
     if (dir == TurnDirection::CLOCKWISE && err > 0) return err - 360.0;
     if (dir == TurnDirection::COUNTERCLOCKWISE && err < 0) return err + 360.0;
     return err;
+}
+
+Beam yogurt::beamPos(double theta, double xOffset, double yOffset, double mountAngleDeg) {
+    double beamAngleRad = deg2rad(theta + mountAngleDeg);
+    double dirX = std::cos(beamAngleRad), dirY = std::sin(beamAngleRad);
+    
+    double headingCos = std::cos(deg2rad(theta)), headingSin = std::sin(deg2rad(theta));
+    double xOff = yOffset * headingCos + xOffset * headingSin;
+    double yOff = yOffset * headingSin - xOffset * headingCos;
+
+    return Beam{xOff, yOff, dirX, dirY};
 }
