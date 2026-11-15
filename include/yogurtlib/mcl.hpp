@@ -71,7 +71,7 @@ class MCL {
 public:
     FieldMap fieldMap;
 
-
+    void scoreReading() const;
 private:
 
 

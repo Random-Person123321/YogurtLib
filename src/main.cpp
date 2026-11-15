@@ -1,43 +1,158 @@
 #include "main.h"
 #include "yogurtlib/api.hpp"
 
-// yogurt::Drivetrain drivetrain;
+//Just to help tie the different pieces of the library together
+//Drivetrain is core library code
+//UI & MCL is optional code the user can choose to include
+yogurt::UI uiobject;
 
-pros::MotorGroup r_motors ({-18, 17});
-pros::MotorGroup l_motors ({-19, 20});
+pros::Controller master (CONTROLLER_MASTER);
+pros::MotorGroup r_motors ({-20, 19});
+pros::MotorGroup l_motors ({-17, 18});
+pros::MotorGroup winch ({-15, 16});
+pros::MotorGroup toggles ({-14, 13});
 
-//Temporary
-yogurt::DriveMotors dm(&l_motors, &r_motors, 2.75);
+pros::adi::DigitalOut claw ('H');
+
+yogurt::DriveMotors dm (&l_motors, &r_motors, 2.75);
+
+// Sensors
 pros::Imu imu1(1);
 pros::Imu imu2(2);
 pros::Imu imu3(3);
-std::vector<pros::v5::Imu *> imus = {&imu1, &imu2, &imu3};
+yogurt::IMU imus({&imu1, &imu2, &imu3});
 
 pros::Rotation vert(4);
 pros::Rotation horz(5);
+// WINCH Rotation
+pros::Rotation liftEnc(-11);
+
+pros::Distance clawdist(10);
+
+pros::Optical colour(12);
+
 
 yogurt::OdomSensors odometry(&vert, 2.071, 0.256, &horz, 1.99, -2.718, imus, nullptr, nullptr, nullptr, nullptr, 0.0, 0.0, 0.0, 0.0);
-yogurt::ControllerSettings forwards(600.0, 0.0, 0.0, 3.0, 0.1, 0.5, 1000);
-yogurt::ControllerSettings forwardshead(300.0, 0.0, 5.0, 2.0, 0.5, 1.0, 250);
-yogurt::ControllerSettings turning(120.0, 0.0, 15.35, 2.0, 0.75, 8.0, 200);
-yogurt::ControllerSettings swings(200.0, 0.0, 16.0, 3.0, 0.75, 8.0, 200); //THIS DOENST NEED TOLERANCE
-yogurt::PursuitProfile hello3{};
-// DriveMotors motors, OdomSensors odomSensors,
-            //    ControllerSettings driveSettings, ControllerSettings angularSettings, //Lateral for driveStraight, Angular for heading correction,
-            //    ControllerSettings turnSettings, ControllerSettings swingSettings, // turn for turn, swing for swing motion
-            //    PursuitProfile pursuit, double maxVoltage = 12000.0, double defaultSlew = 800.0
-// yogurt::Drivetrain drivetrain(dm, odometry, forwards, forwardshead, turning, swings, hello3, 12000.0, 800.0);
+yogurt::ControllerSettings forwards(1200.0, 0.0, 60.0, 2.0, 0.5, 1.0, 250);//D = 60
+yogurt::ControllerSettings turning(320.0, 0.0, 24.5, 2.0, 0.75, 8.0, 250); //6.375
+yogurt::ControllerSettings swings(320.0, 0.0, 24.5, 2.0, 0.75, 8.0, 250);
+
 yogurt::Drivetrain drivetrain(dm, odometry, forwards, turning, swings);
 
-yogurt::UI uiobject;
+uint32_t startTime;
 
-pros::Controller master(CONTROLLER_MASTER);
+bool clawClose = false;
 
-// void classInit() {
-//     drivetrain.onCalibrated.push_back([](yogurt::Drivetrain& dt) {uiobject.screen_init(dt); });
-//     drivetrain.calibrate();
-    
-// }
+enum ToggleColour {
+    BLUE,
+    RED
+};
+
+ToggleColour Tcolour = ToggleColour::BLUE;
+
+bool liftPIDOn = false;
+int liftPIDTarget = 0;
+const int liftMax = 255648;
+const int liftSpeed = 500; //350
+yogurt::PID liftPID(2.0, 0.0, 0.025, 2.0);
+
+void lift() {
+    liftPID.reset();
+     // yogurt::PID liftPID(1.6, 0.0, 0.01, 2.0);
+    double prevLift = 0.0;
+    int cnt = 0;
+    while (true) {
+        if (!liftPIDOn) {pros::delay(20); continue;}
+        int currentEnc = liftEnc.get_position();
+        liftPIDTarget = std::clamp(liftPIDTarget, 0, liftMax);
+        int liftErr = liftPIDTarget - currentEnc;
+        if (std::abs(liftErr) < 5.0 * 100) liftErr = 0.0; //1 degrees of tolerance
+        double liftOut = liftPID.calculateError(liftErr, 0.02);
+        if(std::abs(liftErr) > 5.0 * 100) liftOut += std::copysign(1500.0, liftErr);
+        
+        liftOut = std::clamp(liftOut, -12000.0, 12000.0);
+        if (liftErr < 0) liftOut *= 0.55;
+        // liftOut = yogurt::slew(liftOut, prevLift, 1000.0);
+        
+        prevLift = liftOut;
+        cnt++;
+        if (cnt == 10) {
+            cnt = 0;
+            printf("Tar: %d, Enc: %d, Err: %d, Out: %.1lf\n", liftPIDTarget, currentEnc, liftErr, liftOut);
+            auto current = winch.get_current_draw_all();
+            auto vel = winch.get_actual_velocity_all();
+            // printf("%.1lf\n", (vel[0] + vel[1]) / 2);
+            // printf("%d\n",(current[0] + current[1]) / 2);
+            fflush(stdout);
+        }
+        // std::cout << liftErr << " " << liftOut << '\n'
+        winch.move_voltage(liftOut);
+        toggles.move_voltage(liftOut);
+        pros::delay(20);
+    }
+}
+
+void liftHome() {
+    winch.set_brake_mode_all(pros::E_MOTOR_BRAKE_BRAKE);
+    int time = 0;
+    int cnt = 0;
+    winch.move_voltage(12000);
+    while (time < 2500) {
+        auto current = winch.get_current_draw_all();
+        auto vel = winch.get_actual_velocity_all();
+        if ((current[0] + current[1]) / 2 > 2485 &&
+        (vel[0] + vel[1] / 2) < 20){
+            liftEnc.set_position(143e3);
+            printf("Homing Done\n");
+            return;
+        }
+        // cnt++;
+        // if (cnt == 20) {
+        //     // printf("%d\n", (current[0] + current[1]) / 2);
+        //     printf("%.1lf\n", (vel[0] + vel[1]) / 2);
+        //     cnt = 0;
+        // }
+        pros::delay(10);
+        time += 10;
+    }
+    printf("Homing TIMEOUT\n");
+}
+
+void autoClaw() {
+    while(true) {
+        double dist = clawdist.get_distance();
+        if (dist <= 35.0 && !master.get_digital(DIGITAL_R2)){
+            clawClose = false;
+        } else {clawClose = true;}
+        pros::delay(20);
+    }
+}
+
+#include "yogurtlib/misc.hpp"
+void autoToggle() {
+    double reading = colour.get_hue();
+    while(true){
+        if(master.get_digital(DIGITAL_Y)){
+            colour.set_led_pwm(100);
+            double reading = colour.get_hue();
+            if (Tcolour == ToggleColour::BLUE){
+                if(std::fabs(yogurt::angleDiffDeg(210.0, reading)) >  10) {
+                    toggles.move_voltage(-10000);
+                }
+                else toggles.move_voltage(0);
+            }
+            else {
+                if(std::fabs(yogurt::angleDiffDeg(7.0, reading)) >  10) {
+                    toggles.move_voltage(-10000);
+                }
+                else toggles.move_voltage(0);
+            }
+        } else {
+            colour.set_led_pwm(0);
+        }
+    }
+}
+
 void classInit() {
     // drivetrain.setHeadingCorrectionGains(25.0, 0.0, 0.0, 3.0);
     drivetrain.setHeadingCorrectionGains(430.0, 0.0, 26.875, 2.0);
@@ -54,7 +169,13 @@ void classInit() {
  * All other competition modes are blocked by initialize; it is recommended
  * to keep execution time for this mode under a few seconds.
  */
-void initialize() {classInit();}
+
+void initialize() { //INIT SHOULD GO HERE!
+    classInit();
+    colour.set_led_pwm(0);
+    liftEnc.set_data_rate(5);
+}
+
 
 /**
  * Runs while the robot is in the disabled state of Field Management System or
@@ -85,7 +206,21 @@ void competition_initialize() {}
  * will be stopped. Re-enabling the robot will restart the task, not re-start it
  * from where it left off.
  */
+
+void debug() {
+    while (true) {
+        yogurt::Pose p = drivetrain.getPose();
+        // printf("(X: %.1lf, Y: %.1lf, H: %.1lf, MU1: %.1lf, MU2: %.1lf, MU3: %.1lf)\n", p.x, p.y, p.theta, drivetrain.odom.imus.sensors[0]->get_heading(), drivetrain.odom.imus.sensors[1]->get_heading(), drivetrain.odom.imus.sensors[2]->get_heading());
+        printf("(X: %.1lf, Y: %.1lf, H: %.1lf, T: %d)\n", p.x, p.y, p.theta, pros::millis() - startTime);
+        pros::delay(200);
+    }
+}
+
+
+
 void autonomous() {
+    pros::Task task(debug);
+    startTime = pros::millis();
     // drivetrain.driveStraight(12.0, 1000);
     drivetrain.turnToHeading(300.0, 1000, {.dir = yogurt::TurnDirection::CLOCKWISE});
 }
@@ -104,8 +239,43 @@ void autonomous() {
  * task, not resume it from where it left off.
  */
 void opcontrol() {
-    while(true){
-        drivetrain.motors.arcade(master.get_analog(ANALOG_LEFT_Y), master.get_analog(ANALOG_RIGHT_X), true, 2.3);
-        pros::delay(20);
+    // pros::Task task(debug);
+    pros::Task clawtask(autoClaw);
+    pros::Task toggleTask(autoToggle);
+    // bool LastYButtonPressed = false;
+    // bool lastRButtonPressed = false;
+
+    // liftHome();
+    // pros::Task liftTask(lift);
+    // liftPIDOn = true;
+    // liftPIDTarget = 4.0/22.0*143e3;
+
+    int cnt = 0;
+    while(true) {
+        // drivetrain.motors.arcade(
+        //     master.get_analog(ANALOG_LEFT_Y),
+        //     master.get_analog(ANALOG_RIGHT_X), true, 1.6);
+            
+            if (master.get_digital(pros::E_CONTROLLER_DIGITAL_L1)) {
+                // liftPIDTarget += liftSpeed;
+                winch.move_voltage(12000);
+                toggles.move_voltage(12000);
+            }
+            else if(master.get_digital(pros::E_CONTROLLER_DIGITAL_L2)) {
+                // liftPIDTarget -= liftSpeed;
+                winch.move_voltage(-12000);
+                toggles.move_voltage(-12000);
+            }
+            else {
+                winch.move_voltage(0);
+                toggles.move_voltage(0);
+            }
+         
+        if (++cnt % 40 == 0) {
+            std:: cout << liftEnc.get_position() << '\n';
+        }
+    //     // winch.move_voltage(12000);
+        claw.set_value(clawClose);
+        pros::delay(5);
     }
-} 
+}

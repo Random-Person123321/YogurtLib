@@ -23,16 +23,16 @@ void Drivetrain::odomLoop() {
     int logCount = 0;
     while (true) {
         updateOdometry(stepMs / 1000.0);
-        if (++logCount % 10 == 0) {
-        printf("Still:%d",lastStill);
-        for (int i = 0; i < odom.imus.count(); i++) {
-            printf(",Heading: %.1f", odom.imus.getHeading(i));
-            printf(",Drift: %.3f", odom.imus.drift(i));
-            printf(",Rejects: %d", odom.imus.imuData[i].rejects);
+        // if (++logCount % 10 == 0) {
+            // printf("Still:%d",lastStill);
+            // for (int i = 0; i < odom.imus.count(); i++) {
+            //     printf(",Heading: %.1f", odom.imus.getHeading(i));
+            //     printf(",Drift: %.3f", odom.imus.drift(i));
+            //     printf(",Rejects: %d", odom.imus.imuData[i].rejects);
 
-        }
-        printf("\n"); 
-}
+            // }
+        //     printf("\n"); 
+        // }
         pros::Task::delay_until(&prevTime, stepMs);
     }
 }
