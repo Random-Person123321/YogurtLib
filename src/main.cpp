@@ -13,6 +13,7 @@ pros::MotorGroup winch ({-15, 16});
 pros::MotorGroup toggles ({-14, 13});
 
 pros::adi::DigitalOut claw ('H');
+pros::adi::DigitalOut rake ('G');
 
 yogurt::DriveMotors dm (&l_motors, &r_motors, 2.75);
 
@@ -133,22 +134,23 @@ void autoToggle() {
     double reading = colour.get_hue();
     while(true){
         if(master.get_digital(DIGITAL_Y)){
-            colour.set_led_pwm(100);
+            colour.set_led_pwm(50);
             double reading = colour.get_hue();
             if (Tcolour == ToggleColour::BLUE){
-                if(std::fabs(yogurt::angleDiffDeg(210.0, reading)) >  10) {
-                    toggles.move_voltage(-10000);
+                double target = (180 + 240) / 2;
+                if (std::fabs(yogurt::angleDiffDeg(target, reading)) > 30) {
+                    toggles.move_voltage(-8200);
                 }
                 else toggles.move_voltage(0);
             }
             else {
-                if(std::fabs(yogurt::angleDiffDeg(7.0, reading)) >  10) {
-                    toggles.move_voltage(-10000);
+                if (std::fabs(yogurt::angleDiffDeg(7.0, reading)) >  10) {
+                    toggles.move_voltage(-8200);
                 }
                 else toggles.move_voltage(0);
             }
         } else {
-            colour.set_led_pwm(0);
+            // colour.set_led_pwm(0);
         }
     }
 }
@@ -239,16 +241,18 @@ void autonomous() {
  * task, not resume it from where it left off.
  */
 void opcontrol() {
-    // pros::Task task(debug);
+    pros::Task task(debug);
     pros::Task clawtask(autoClaw);
     pros::Task toggleTask(autoToggle);
+    liftHome();
+    pros::Task liftTask(lift);
+    liftPIDOn = true;
+    liftPIDTarget = 4.0/22.0*143e3;
+    
+    
     // bool LastYButtonPressed = false;
-    // bool lastRButtonPressed = false;
-
-    // liftHome();
-    // pros::Task liftTask(lift);
-    // liftPIDOn = true;
-    // liftPIDTarget = 4.0/22.0*143e3;
+    bool LastRButtonPressed = false;
+    bool rakeMode = false;
 
     int cnt = 0;
     while(true) {
@@ -270,7 +274,13 @@ void opcontrol() {
                 winch.move_voltage(0);
                 toggles.move_voltage(0);
             }
-         
+
+            bool CurrentRButton = master.get_digital(pros::E_CONTROLLER_DIGITAL_RIGHT);
+            if (CurrentRButton and !LastRButtonPressed) {
+                rakeMode = !rakeMode;
+                rake.set_value(rakeMode);
+            }
+            LastRButtonPressed = CurrentRButton;// Updates so it doesn't toggle back and force next loop
         if (++cnt % 40 == 0) {
             std:: cout << liftEnc.get_position() << '\n';
         }
