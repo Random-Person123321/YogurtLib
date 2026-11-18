@@ -1,5 +1,5 @@
 #pragma once
-#include <algorithm>
+#include <vector>
 #include "yogurtlib/pose.hpp"
 
 namespace yogurt{

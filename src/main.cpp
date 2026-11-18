@@ -1,5 +1,6 @@
 #include "main.h"
 #include "yogurtlib/api.hpp"
+#include "yogurtlib/misc.hpp"
 
 //Just to help tie the different pieces of the library together
 //Drivetrain is core library code
@@ -42,8 +43,6 @@ yogurt::Drivetrain drivetrain(dm, odometry, forwards, turning, swings);
 
 uint32_t startTime;
 
-bool clawClose = false;
-
 enum ToggleColour {
     BLUE,
     RED
@@ -54,8 +53,8 @@ ToggleColour Tcolour = ToggleColour::BLUE;
 bool liftPIDOn = false;
 int liftPIDTarget = 0;
 const int liftMax = 255648;
-const int liftSpeed = 500; //350
-yogurt::PID liftPID(2.0, 0.0, 0.025, 2.0);
+const int liftSpeed = 350; //350, 500
+yogurt::PID liftPID(2.0, 0.0, 0.0, 2.0);
 
 void lift() {
     liftPID.reset();
@@ -79,11 +78,12 @@ void lift() {
         cnt++;
         if (cnt == 10) {
             cnt = 0;
-            printf("Tar: %d, Enc: %d, Err: %d, Out: %.1lf\n", liftPIDTarget, currentEnc, liftErr, liftOut);
+            // printf("Tar: %d, Enc: %d, Err: %d, Out: %.1lf\n", liftPIDTarget, currentEnc, liftErr, liftOut);
+            // printf("Tar: %d\n", currentEnc);
             auto current = winch.get_current_draw_all();
             auto vel = winch.get_actual_velocity_all();
-            // printf("%.1lf\n", (vel[0] + vel[1]) / 2);
-            // printf("%d\n",(current[0] + current[1]) / 2);
+            printf("Vel:%.1lf ", (vel[0] + vel[1]) / 2);
+            printf("mA:%d\n",(current[0] + current[1]) / 2);
             fflush(stdout);
         }
         // std::cout << liftErr << " " << liftOut << '\n'
@@ -98,61 +98,80 @@ void liftHome() {
     int time = 0;
     int cnt = 0;
     winch.move_voltage(12000);
+    toggles.move_voltage(12000);
     while (time < 2500) {
         auto current = winch.get_current_draw_all();
         auto vel = winch.get_actual_velocity_all();
-        if ((current[0] + current[1]) / 2 > 2485 &&
+        if ((current[0] + current[1]) / 2 > 1800 &&
         (vel[0] + vel[1] / 2) < 20){
-            liftEnc.set_position(143e3);
+            liftEnc.set_position(liftMax);
             printf("Homing Done\n");
             return;
         }
-        // cnt++;
-        // if (cnt == 20) {
-        //     // printf("%d\n", (current[0] + current[1]) / 2);
-        //     printf("%.1lf\n", (vel[0] + vel[1]) / 2);
-        //     cnt = 0;
-        // }
+        cnt++;
+        if (cnt == 20) {
+            printf("%d\n", (current[0] + current[1]) / 2);
+            printf("%.1lf\n", (vel[0] + vel[1]) / 2);
+            cnt = 0;
+        }
         pros::delay(10);
         time += 10;
     }
     printf("Homing TIMEOUT\n");
 }
+bool useAutoClaw = true;
 
-void autoClaw() {
+
+bool autoClaw = false;
+void autoClawTask() {
     while(true) {
         double dist = clawdist.get_distance();
-        if (dist <= 35.0 && !master.get_digital(DIGITAL_R2)){
-            clawClose = false;
-        } else {clawClose = true;}
+        if (dist <= 50.0 && !master.get_digital(DIGITAL_R2)){ //35
+            autoClaw = true;
+        }
+        else {
+            autoClaw = false;
+        }
         pros::delay(20);
     }
 }
 
-#include "yogurtlib/misc.hpp"
+bool toggleOn = false;
 void autoToggle() {
     double reading = colour.get_hue();
-    while(true){
-        if(master.get_digital(DIGITAL_Y)){
+    while(true) {
+        if(master.get_digital(DIGITAL_Y)) {
             colour.set_led_pwm(50);
-            double reading = colour.get_hue();
+            reading = colour.get_hue();
             if (Tcolour == ToggleColour::BLUE){
                 double target = (180 + 240) / 2;
                 if (std::fabs(yogurt::angleDiffDeg(target, reading)) > 30) {
                     toggles.move_voltage(-8200);
+                    toggleOn = 1;
                 }
-                else toggles.move_voltage(0);
+                else{ toggles.move_voltage(0); toggleOn = 0; }
             }
             else {
                 if (std::fabs(yogurt::angleDiffDeg(7.0, reading)) >  10) {
                     toggles.move_voltage(-8200);
+                    toggleOn = 1;
                 }
-                else toggles.move_voltage(0);
+                else {toggles.move_voltage(0); toggleOn = 0; }
             }
         } else {
             // colour.set_led_pwm(0);
+            toggleOn = 0;
         }
+        pros::delay(20);
     }
+}
+
+void raiseLift() {
+    winch.move_voltage(12000);
+    toggles.move_voltage(12000);
+    pros::delay(400);
+    winch.move_voltage(0);
+    toggles.move_voltage(0);
 }
 
 void classInit() {
@@ -176,6 +195,7 @@ void initialize() { //INIT SHOULD GO HERE!
     classInit();
     colour.set_led_pwm(0);
     liftEnc.set_data_rate(5);
+    claw.set_value(false);
 }
 
 
@@ -241,24 +261,27 @@ void autonomous() {
  * task, not resume it from where it left off.
  */
 void opcontrol() {
-    pros::Task task(debug);
-    pros::Task clawtask(autoClaw);
+    // pros::Task task(debug);
+    pros::Task clawtask(autoClawTask);
     pros::Task toggleTask(autoToggle);
     liftHome();
-    pros::Task liftTask(lift);
+    // pros::Task liftTask(lift);
     liftPIDOn = true;
-    liftPIDTarget = 4.0/22.0*143e3;
+    liftPIDTarget = 0;
     
     
     // bool LastYButtonPressed = false;
+    bool lastBButonPressed = false;
     bool LastRButtonPressed = false;
     bool rakeMode = false;
+    bool clawClose = true;
+    bool lastClawState = false;
 
     int cnt = 0;
     while(true) {
-        // drivetrain.motors.arcade(
-        //     master.get_analog(ANALOG_LEFT_Y),
-        //     master.get_analog(ANALOG_RIGHT_X), true, 1.6);
+        drivetrain.motors.arcade(
+            master.get_analog(ANALOG_LEFT_Y),
+            master.get_analog(ANALOG_RIGHT_X), true, 1.6);
             
             if (master.get_digital(pros::E_CONTROLLER_DIGITAL_L1)) {
                 // liftPIDTarget += liftSpeed;
@@ -267,12 +290,12 @@ void opcontrol() {
             }
             else if(master.get_digital(pros::E_CONTROLLER_DIGITAL_L2)) {
                 // liftPIDTarget -= liftSpeed;
-                winch.move_voltage(-12000);
-                toggles.move_voltage(-12000);
+                winch.move_voltage(-8000);
+                toggles.move_voltage(-8000);
             }
             else {
                 winch.move_voltage(0);
-                toggles.move_voltage(0);
+                toggles.move_voltage(toggleOn? -8200 : 0);
             }
 
             bool CurrentRButton = master.get_digital(pros::E_CONTROLLER_DIGITAL_RIGHT);
@@ -281,11 +304,45 @@ void opcontrol() {
                 rake.set_value(rakeMode);
             }
             LastRButtonPressed = CurrentRButton;// Updates so it doesn't toggle back and force next loop
+
+            bool currentBButton = master.get_digital(DIGITAL_B);
+            if (currentBButton && lastBButonPressed != currentBButton) {
+                clawClose = !clawClose;
+            }
+            lastBButonPressed = currentBButton;
+            int print = -1;
+            if (autoClaw && clawClose) { // If they both agree to close, then close
+                print = 0;
+                claw.set_value(false); //false is close, true is open
+                
+                // if (lastClawState) {
+                //     print = 1;
+                //     raiseLift(); 
+                //     pros::delay(10);
+                // }
+                lastClawState = false;
+            }
+            else if (autoClaw && !clawClose) { 
+                claw.set_value(true); // If the user wants it open, they get it
+                print = 2;
+                lastClawState = true;
+            }
+            else if (!autoClaw || !clawClose) {claw.set_value(true); lastClawState = true; print = 3; }
+
         if (++cnt % 40 == 0) {
-            std:: cout << liftEnc.get_position() << '\n';
+            auto current = winch.get_current_draw_all();
+            auto vel = winch.get_actual_velocity_all();
+            std::cout << lastClawState;
+            if (print == 0) std::cout << "YES ";
+            else if (print == 1) std::cout << "start ";
+            else if (print == 2)  std::cout << "OPEN User override\n";
+            else if (print == 3) std::cout << "Open\n";
+            // std:: cout << liftEnc.get_position() << '\n';
+            // std::cout << autoClaw << " " << clawClose << '\n';
+            // printf("Vel:%.1lf ", (vel[0] + vel[1]) / 2);
+            // printf("mA:%d\n",(current[0] + current[1]) / 2);
         }
     //     // winch.move_voltage(12000);
-        claw.set_value(clawClose);
         pros::delay(5);
     }
 }
