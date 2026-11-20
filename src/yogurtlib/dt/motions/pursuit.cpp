@@ -1,3 +1,4 @@
+#include <algorithm>
 #include "yogurtlib/dt/dt.hpp"
 #include "yogurtlib/pursuit.hpp"
 #include "yogurtlib/misc.hpp"

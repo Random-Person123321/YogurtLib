@@ -1,3 +1,4 @@
+#include <algorithm>
 #include "yogurtlib/dt/dt.hpp"
 #include "yogurtlib/dt/motors.hpp"
 #include "yogurtlib/misc.hpp"

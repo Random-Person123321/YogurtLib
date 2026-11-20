@@ -348,6 +348,8 @@ public:
      * @brief returns the current pose
     */
     Pose getPose() const;
+
+    Pose getUnwrappedPose() const;
     
     /**
      * @brief set the pose of the robot, call at the start of each autonomus routine

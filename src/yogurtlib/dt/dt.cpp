@@ -58,6 +58,13 @@ Pose Drivetrain::getPose() const {
     return p;
 }
 
+Pose Drivetrain::getUnwrappedPose() const {
+    poseMutex.take();
+    Pose p = pose;
+    poseMutex.give();
+    return p;
+}
+
 void Drivetrain::setPose(const yogurt::Pose& p) {
     poseMutex.take();
     double current = pose.theta;

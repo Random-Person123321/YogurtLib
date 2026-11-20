@@ -1,5 +1,7 @@
+#include <algorithm>
 #include "yogurtlib/dt/dt.hpp"
 #include "yogurtlib/misc.hpp"
+
 using namespace yogurt;
 
 // double Drivetrain::readHeadingDeg() const {
@@ -129,13 +131,13 @@ std::vector<double> Drivetrain::measureImuScale(bool CW, int turns, int volts, i
     std::vector<double> start(imus.sensors.size());
     for (size_t i = 0; i < start.size(); i++) start[i] = imus.sensors[i]->get_rotation();
 
-    Pose p = getPose();
+    Pose p = getUnwrappedPose();
     double startHeading = p.theta;
     motors.setVoltage(-dir * volts, dir * volts);
     int elapsed = 0;
 
     while (std::fabs(p.theta - startHeading) < turns * 360.0 - 10.0 && elapsed < timeOut) {
-        p = getPose();
+        p = getUnwrappedPose();
         pros::delay(10);
         elapsed += 10;
     }
