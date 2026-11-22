@@ -29,6 +29,10 @@ enum ToggleColour {
     RED
 };
 
+inline double liftPercent(double per) {
+    return per * liftMax / 100.0;
+}
+
 extern ToggleColour TOGGLE_COLOUR;
 
 extern void liftHome();

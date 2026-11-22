@@ -111,7 +111,7 @@ void liftHome() {
     while (time < 2500) {
         auto current = winch.get_current_draw_all();
         auto vel = winch.get_actual_velocity_all();
-        if ((current[0] + current[1]) / 2 > 1800 &&
+        if ((current[0] + current[1]) / 2 > 2200 &&
         (vel[0] + vel[1]) / 2 < 20){
             liftEnc.set_position(liftMax);
             printf("Homing Done\n");
@@ -133,43 +133,57 @@ bool useAutoClaw = true;
 
 bool autoClaw = false;
 bool autoClawOn = false;
+bool vibratefunc = true;
 void autoClawTask() {
     while(true) {
+        if (!autoClawOn) {pros::delay(20); continue; }
         double dist = clawdist.get_distance();
         if (dist <= 50.0 /*&& !master.get_digital(DIGITAL_R2)*/) { //35
             autoClaw = true;
+
+            if (vibratefunc){
+                master.rumble( "...");
+                vibratefunc = false;
+
+            }
         }
         else {
             autoClaw = false;
+            vibratefunc = true; 
+        }
+        if (pros::competition::is_autonomous()) {
+            if (autoClaw) claw.set_value(false);
         }
         pros::delay(20);
     }
 }
 
+
 bool autoToggleOn = false;
 void autoToggle() {
     double reading = colour.get_hue();
     while(true) {
-        if (!autoToggleOn) {pros::delay(20); continue; }
+        if (!autoToggleOn) {toggleOn = 0; pros::delay(20); continue; }
         if(master.get_digital(DIGITAL_Y) || pros::competition::is_autonomous()) {
             colour.set_led_pwm(50);
             reading = colour.get_hue();
             if (TOGGLE_COLOUR == ToggleColour::BLUE){
                 double target = (180 + 240) / 2;
                 if (std::fabs(yogurt::angleDiffDeg(target, reading)) > 30) {
-                    toggles.move_voltage(-8200);
+                    toggles.move_voltage(-7800);
                     toggleOn = 1;
                 }
-                else {pros::delay(100); toggles.move_voltage(0); toggleOn = 0; }
+                else { /*pros::delay(150);*/ toggles.move_voltage(0); toggleOn = 0; }
             }
             else {
                 if (std::fabs(yogurt::angleDiffDeg(7.0, reading)) >  10) {
-                    toggles.move_voltage(-8200);
+                    toggles.move_voltage(-7800);
                     toggleOn = 1;
                 }
-                else {pros::delay(100); toggles.move_voltage(0); toggleOn = 0; }
+                else {/*pros::delay(150);*/ toggles.move_voltage(0); toggleOn = 0; }
             }
-        } else {
+        } 
+        else {
             colour.set_led_pwm(0);
             toggleOn = 0;
         }
@@ -189,6 +203,8 @@ void classInit() {
     // drivetrain.setHeadingCorrectionGains(25.0, 0.0, 0.0, 3.0);
     drivetrain.setHeadingCorrectionGains(140.0, 0.0, 6.5, 2.0); //x120
     drivetrain.setBoomerangSettleGains({}, {});
+    uiobject.auton_list.push_back({"R Right 2 P", "S:/UI/pathimgs/RedRight2Pin.bin", true});
+    uiobject.auton_list.push_back({"B Right 2 P", "S:/UI/pathimgs/BlueRight2Pin.bin", false});
     drivetrain.onCalibrated.push_back([](yogurt::Drivetrain& dt) {uiobject.screen_init(dt); });
     drivetrain.odom.imus.setScale(0, 0.9976645);
     drivetrain.odom.imus.setScale(1, 1.0004675);
@@ -279,7 +295,14 @@ void autonomous() {
     // std::cout << yogurt::entostr(result);
     // result = drivetrain.turnToHeading(90.0, 6000.0);
     // std::cout << yogurt::entostr(result);
-    rightRed();
+    int auton = uiobject.selected_auto;
+    // switch(auton){
+    //     case 0 : rightRed(); break;
+    //     case 1 : rightBlue(); break;
+    // rightRedOne();
+    rightBlueOne();
+    // rightBlueOne();
+    // }
 }
 
 /**
@@ -298,7 +321,6 @@ void autonomous() {
 void opcontrol() {
     // pros::Task task(debug);
     // liftHome();
-
 
     liftPIDOn = true;
     autoClawOn = true;
